@@ -25,3 +25,8 @@ cambios.json
 
 # --- Las casas de verdad: privadas, nunca en este repo ---
 casas/
+
+# --- Workflows: el token de git de este entorno no tiene scope 'workflow' ---
+# El flujo de GitHub Pages vive en el repo remoto (se creo por API) y se edita
+# desde la web de GitHub; localmente se conserva la copia de referencia.
+.github/workflows/
