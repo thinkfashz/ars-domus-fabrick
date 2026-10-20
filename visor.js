@@ -1,3 +1,17 @@
+/* Ars Domus FABRICK — contrato de modulos.
+   Los modulos de modulo/ se cargan despues de este archivo y se enganchan aqui:
+     AD.onFrame(function(dt){...})   animacion por cuadro (dt en segundos)
+     AD.piezas.registra({...})       cajones, puertas de mueble, nevera, luces
+   Este bloque debe quedar ANTES de que se definan las capas y la escena. */
+var AD = window.AD || (window.AD = {});
+AD.hooks = AD.hooks || [];
+AD.piezas = AD.piezas || {items: [], registra: function(p){ AD.piezas.items.push(p); }};
+AD.onFrame = AD.onFrame || function(fn){ AD.hooks.push(fn); return fn; };
+/* Un modulo puede pedir que se avise cuando el visor ya esta listo. */
+AD.listo = AD.listo || false;
+AD.alListo = AD.alListo || [];
+AD.avisaListo = function(fn){ if(AD.listo) fn(); else AD.alListo.push(fn); };
+
 /* Ars Domus: visor 3D de una casa. Lee window.CASA (casa.js; window.FINCA también vale) y usa three.js r128
    (global THREE). Todo lo que es de una casa concreta viene en los datos; aquí solo está cómo se dibuja. */
 (function(){
@@ -5190,6 +5204,7 @@ btnFicha.addEventListener('click', function(){ if(fichaPuerta) mueve(fichaPuerta
 function bucle(){
   requestAnimationFrame(bucle);
   var dt = Math.min(0.3, reloj.getDelta());
+  for(var h = 0; h < AD.hooks.length; h++){ try{ AD.hooks[h](dt); }catch(e){ console.warn('AD hook', e); } }
   if(TOUR.activo) andaTour(dt);
   else if(pie.activo){ var n = Math.ceil(dt/0.05); for(var i=0;i<n;i++) andar(dt/n); }
   else { mueveOrbita(dt); colocar(); }
@@ -5252,4 +5267,20 @@ bucle();
 document.getElementById('cargando').hidden = true;
 window.__visor = {escena:escena, camara:camara, aplicaVista:aplicaVista, VISTAS:VISTAS, pie:pie,
                   entrarPie:entrarPie, salirPie:salirPie, IDS:IDS, irAId:irAId, ED:ED, PUNTOS:PUNTOS, LZ:LZ, REPARTO:REPARTO, estanciaActiva:estanciaActiva};
+
+/* ── Contrato para los modulos de modulo/ ── */
+AD.api = {escena:escena, camara:camara, renderer:renderer, capas:capas, pie:pie,
+          TOUR:TOUR, TOURS:TOURS, PUERTAS:PUERTAS, PUNTOS:PUNTOS, pick:pick,
+          VISTAS:VISTAS, VERSIONES:VERSIONES,
+          GRUPOS_V:GRUPOS_V, LZ:LZ, GIRO:GIRO, SUELO:SUELO, aMundo:aMundo, d2r:d2r,
+          entraPie:entrarPie, salirPie:salirPie, aplicaVista:aplicaVista, eligeVista:eligeVista,
+          mueve:mueve, visible:visible, estanciaActiva:estanciaActiva, reloj:reloj,
+          poneCapa:poneCapa, MUEBLE:MUEBLE, MAT:MAT, C0:C0};
+/* C, INT y VERSION cambian al cambiar de version de casa: son getters, no copias.
+   Un modulo que leyera una foto de C se quedaria con la planta equivocada. */
+Object.defineProperty(AD.api, 'C', {get:function(){ return C; }});
+Object.defineProperty(AD.api, 'INT', {get:function(){ return INT; }});
+Object.defineProperty(AD.api, 'VERSION', {get:function(){ return VERSION; }});
+AD.listo = true;
+AD.alListo.forEach(function(fn){ try{ fn(); }catch(e){ console.warn('AD', e); } });
 })();

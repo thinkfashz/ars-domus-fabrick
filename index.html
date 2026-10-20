@@ -313,8 +313,38 @@ body.editando #escena canvas{cursor:crosshair}
 
 #abrir-panel{display:none}
 #cargando{position:fixed; inset:0; display:grid; place-items:center; z-index:40;
-  background:var(--paper); color:var(--muted)}
+  background:var(--paper); color:var(--uted)}
 #cargando[hidden]{display:none!important}
+
+/* ── Barra de acciones Fabrick (modulos de modulo/) ──
+   Va arriba a la derecha, en vertical, y se apila. Cada boton llama a un
+   modulo por su API; si el modulo no esta (o no fallo), el boton se oculta.
+   En movil son 44 px de lado, que es el minimo que se puede tocar con guante. */
+#fabrick{
+  position:fixed; z-index:30; right:12px; top:84px;
+  display:flex; flex-direction:column; gap:8px; align-items:flex-end;
+}
+#fabrick[hidden]{display:none!important}
+#fabrick button{
+  min-width:44px; min-height:44px; padding:0 12px;
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  background:var(--surface); color:var(--ink); border:1px solid var(--line);
+  border-radius:4px; box-shadow:var(--shadow);
+  font-family:"IBM Plex Sans Condensed",sans-serif; font-weight:600;
+  font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+  cursor:pointer; -webkit-tap-highlight-color:transparent;
+}
+#fabrick button:active{transform:scale(.96)}
+#fabrick button[aria-pressed="true"]{
+  background:var(--accent); color:var(--accent-ink); border-color:var(--accent);
+}
+#fabrick button[hidden]{display:none!important}
+#fabrick .fab-ico{width:18px; height:18px; flex:0 0 18px}
+@media (max-width:860px){
+  #fabrick{top:auto; bottom:12px; right:12px; flex-direction:row; flex-wrap:wrap;
+    justify-content:flex-end; max-width:calc(100vw - 24px)}
+  #fabrick button{font-size:10px; padding:0 10px}
+}
 
 @media (max-width:860px){
   #panel{top:auto; bottom:0; left:0; right:0; width:auto; max-height:72dvh;
@@ -336,9 +366,12 @@ body.editando #escena canvas{cursor:crosshair}
 <script>
 /* Pinta en pantalla cualquier error de carga o ejecución, para no depender de la consola. */
 window.addEventListener('error', function(e){
+  var t = e.target && e.target !== window && (e.target.src || e.target.href);
+  /* Un modulo que falte no puede romper el visor: se avisa por consola y se sigue.
+     (Pasa si se developing sin un modulo, o si la cache del service worker va vieja.) */
+  if(t && /\/modulo\//.test(t)){ console.warn('Falta el modulo', t); return; }
   var c = document.getElementById('cargando');
   if(!c) return;
-  var t = e.target && e.target !== window && (e.target.src || e.target.href);
   var msg = t ? 'No se pudo cargar ' + t
               : String(e.message) + ' — ' + (e.filename || '').split('/').pop() + ':' + e.lineno;
   c.hidden = false;
@@ -527,9 +560,21 @@ window.addEventListener('error', function(e){
   <button id="tour-out" type="button">Salir</button>
 </div>
 
+<!-- Barra de acciones de Fabrick: la rellenan los modulos de modulo/ -->
+<nav id="fabrick" hidden aria-label="Acciones de Fabrick"></nav>
+
 <script src="/node_modules/three/build/three.min.js"></script>
 <script src="casa.js"></script>
 <script src="visor.js"></script>
+<!-- Modulos de Fabrick: se cargan despues del visor y usan el contrato AD -->
+<script src="modulo/paleta.js"></script>
+<script src="modulo/cocina.js"></script>
+<script src="modulo/plano.js"></script>
+<script src="modulo/camaras.js"></script>
+<script src="modulo/hub.js"></script>
+<script src="modulo/audio.js"></script>
+<script src="modulo/carga.js"></script>
+<script src="modulo/fabrick.js"></script>
 <script>
 // Instalable como app: registra el service worker (que abre la maqueta sin conexión) y,
 // cuando ya está todo en caché, avisa con un aviso de Android de que se puede instalar.

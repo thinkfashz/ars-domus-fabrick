@@ -1,11 +1,14 @@
 /* Service worker del visor. Sirve la maqueta desde la caché para que el paseo abra al instante
    y siga abriendo sin cobertura; cuando hay versión nueva, la descarga en segundo plano y
    refresca sola en la siguiente visita. Solo toca lo de este mismo origen. */
-var VERSION = 'build-house-v2';
+var VERSION = 'build-house-v3-fabrick';
 var CAPA = VERSION + '-estatico';
 
 var BASE = ['./', './index.html', './manifest.webmanifest', './iconos/icono-192.png',
-            './iconos/icono-512.png', './iconos/icono-maskable-512.png'];
+            './iconos/icono-512.png', './iconos/icono-maskable-512.png',
+            './modulo/paleta.js', './modulo/cocina.js', './modulo/plano.js',
+            './modulo/camaras.js', './modulo/hub.js', './modulo/audio.js',
+            './modulo/carga.js', './modulo/fabrick.js'];
 
 self.addEventListener('install', function(e){
   e.waitUntil(caches.open(CAPA).then(function(c){

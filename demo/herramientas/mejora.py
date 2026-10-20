@@ -19,12 +19,13 @@ def aplica(casa):
     # La cocina se abre al salón: fuera el tabique entre los dos (u = 8, de v = 0 a v = 4,5) y su paso
     c['muros'] = [w for w in c['muros'] if not (w[0] == w[2] == 8 and max(w[1], w[3]) <= 4.5)]
     c['huecos'] = [h for h in c['huecos'] if not (h[0] == h[2] == 8 and max(h[1], h[3]) <= 4.5)]
-    # Suelos y pinturas nuevos
+    # Suelos y pinturas nuevos. El verde limón de los muros se mantiene en las dos versiones
+    # (es la paleta de la casa, no de la reforma): lo que cambia aquí es el suelo y el proyecto.
     nuevos = dict(
-        salon=dict(suelo='parquet', pared='#f4f1ea', idea='Roble en lamas anchas en todo el salón y la cocina abierta.'),
-        cocina=dict(suelo='parquet', pared='#f4f1ea', idea='Sin el tabique: la cocina mira al salón y a la chimenea.'),
+        salon=dict(suelo='parquet', pared='#c8db8a', idea='Roble en lamas anchas en todo el salón y la cocina abierta.'),
+        cocina=dict(suelo='parquet', pared='#cfe0a0', idea='Sin el tabique: la cocina mira al salón y a la chimenea.'),
         recibidor=dict(suelo='hidraulica', idea='Baldosa hidráulica en la entrada.'),
-        estudio=dict(pared='#c9d3c0', idea='Estudio en verde salvia.'),
+        estudio=dict(pared='#c3d49a', idea='Estudio en verde limón, el tono más apagado.'),
     )
     for e in c['interior']['estancias']:
         e.update(nuevos.get(e['id'], {}))

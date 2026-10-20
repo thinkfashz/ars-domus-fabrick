@@ -133,27 +133,40 @@ CHIMENEAS = [dict(uv=[0.25, 4.5], lado=0.6, alto=5.6)]
 # ---------------------------------------------------------------- interior
 # Estancias: caja por los ejes de los muros, cota del suelo, acabados y techo (alto, o alto0/alto1
 # en v0/v1, o a dos aguas con cumbrera en v = vc). `junta`: trozo de otra estancia.
-BLANCO_ROTO = '#f2efe8'
+# El verde limón va al MURO interior, nunca al piso ni a la fachada: el contraste muro/piso es lo
+# que hace leer la arquitectura (paleta 390-1). Los tonos varían por ambiente: los de estar, más
+# saturados; los de dormir, más suaves; el lavadero, casi blanco. El baño queda en azulejo.
+BLANCO_ROTO = '#f2efe8'                 # el neutro de antes: lo usa el interruptor de paleta
+LIMON_SALON = '#c8db8a'                 # salón, recibidor y pasillo
+LIMON_COCINA = '#cfe0a0'
+LIMON_DORM = '#d7e3ab'                  # dormitorios: más suave
+LIMON_ESTUDIO = '#c3d49a'
+LIMON_LAVADERO = '#e2eccb'              # lavadero: casi blanco, es un sitio de servicio
+# Los muros neutros de la casa original: el módulo de paleta (modulo/paleta.js) los trae de aquí
+# para poder volver a «neutro» y comparar el cambio.
+NEUTRO = dict(salon=BLANCO_ROTO, cocina='#f4f4f2', recibidor=BLANCO_ROTO, pasillo=BLANCO_ROTO,
+              dormitorio='#e9e4da', bano='azulejo', dormitorio_2='#dfe6e3', dormitorio_3='#efe3cf',
+              estudio='#a9b3c3', lavadero='#f4f4f2')
 ESTANCIAS = [
-    dict(id='salon', nombre='Salón comedor', codigo='SAL', caja=[0, 0, 8, 9], cota=0.12, suelo='barro', pared=BLANCO_ROTO,
+    dict(id='salon', nombre='Salón comedor', codigo='SAL', caja=[0, 0, 8, 9], cota=0.12, suelo='barro', pared=LIMON_SALON,
          paredes=dict(O='piedra'), techo=dict(alto=ALERO - 0.05, cumbrera=CUMBRERA - 0.2, vc=4.5, mat='blanco', vigas=0.9)),
-    dict(id='cocina', nombre='Cocina', codigo='COC', caja=[8, 0, 12.5, 4.3], cota=0.12, suelo='gres', pared='#f4f4f2',
+    dict(id='cocina', nombre='Cocina', codigo='COC', caja=[8, 0, 12.5, 4.3], cota=0.12, suelo='gres', pared=LIMON_COCINA,
          techo=dict(alto=2.7, mat='blanco')),
-    dict(id='recibidor', nombre='Recibidor', codigo='REC', caja=[8, 4.3, 12.5, 9], cota=0.12, suelo='barro', pared=BLANCO_ROTO,
+    dict(id='recibidor', nombre='Recibidor', codigo='REC', caja=[8, 4.3, 12.5, 9], cota=0.12, suelo='barro', pared=LIMON_SALON,
          techo=dict(alto=2.7, mat='blanco')),
-    dict(id='pasillo', nombre='Pasillo', codigo='PAS', caja=[12.5, 4.3, 20, 5.5], cota=0.12, suelo='laminado', pared=BLANCO_ROTO,
+    dict(id='pasillo', nombre='Pasillo', codigo='PAS', caja=[12.5, 4.3, 20, 5.5], cota=0.12, suelo='laminado', pared=LIMON_SALON,
          techo=dict(alto=2.7, mat='blanco')),
     dict(id='dormitorio', nombre='Dormitorio principal', codigo='DOR', caja=[12.5, 0, 16.8, 4.3], cota=0.12, suelo='laminado',
-         pared='#e9e4da', techo=dict(alto=2.7, mat='blanco')),
+         pared=LIMON_DORM, techo=dict(alto=2.7, mat='blanco')),
     dict(id='bano', nombre='Baño', codigo='BAN', caja=[16.8, 0, 20, 4.3], cota=0.12, suelo='gres', pared='azulejo',
          techo=dict(alto=2.6, mat='blanco')),
     dict(id='dormitorio_2', nombre='Dormitorio de invitados', codigo='DO2', caja=[12.5, 5.5, 16.3, 9], cota=0.12,
-         suelo='laminado', pared='#dfe6e3', techo=dict(alto=2.7, mat='blanco')),
+         suelo='laminado', pared=LIMON_DORM, techo=dict(alto=2.7, mat='blanco')),
     dict(id='dormitorio_3', nombre='Dormitorio pequeño', codigo='DO3', caja=[16.3, 5.5, 20, 9], cota=0.12, suelo='laminado',
-         pared='#efe3cf', techo=dict(alto=2.7, mat='blanco')),
-    dict(id='estudio', nombre='Estudio', codigo='EST', caja=[0, 9, 6, 12.3], cota=0.12, suelo='tarima', pared='#a9b3c3',
+         pared=LIMON_DORM, techo=dict(alto=2.7, mat='blanco')),
+    dict(id='estudio', nombre='Estudio', codigo='EST', caja=[0, 9, 6, 12.3], cota=0.12, suelo='tarima', pared=LIMON_ESTUDIO,
          techo=dict(alto0=r2(alto_ala(9) - 0.1), alto1=r2(alto_ala(12.3) - 0.1), mat='blanco', vigas=0.8)),
-    dict(id='lavadero', nombre='Lavadero', codigo='LAV', caja=[0, 12.3, 6, 15], cota=0.12, suelo='gres', pared='#f4f4f2',
+    dict(id='lavadero', nombre='Lavadero', codigo='LAV', caja=[0, 12.3, 6, 15], cota=0.12, suelo='gres', pared=LIMON_LAVADERO,
          techo=dict(alto0=r2(alto_ala(12.3) - 0.1), alto1=r2(alto_ala(15) - 0.1), mat='blanco')),
     # `fuera`: sus luces van con las de fuera, por grupos en el panel
     dict(id='porche', nombre='Porche', codigo='POR', caja=[6, 9, 20, 11.5], cota=0.12, fuera=True, suelo='barro',
