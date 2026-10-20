@@ -1,8 +1,9 @@
 # Memoria · F — Pantalla de carga de videogame
 
-> El agente F entregó la memoria y el análisis, pero el entorno se reinició antes
-> de que escribiera `modulo/carga.js`. El coordinator implementó el módulo con los
-> hallazgos del agente, y esta memoria describe **el código que está en disco**.
+> El agente F entregó la memoria y el análisis; el módulo (`modulo/carga.js`,
+> 15 KB) quedó escrito en su último momento, antes de que el entorno lo matara.
+> Esta memoria describe **el código que está en disco** (que ya incorpora el
+> aviso de errores que el propio agente discoveries).
 
 ## Lo que encontró el agente (y sigue siendo cierto)
 
@@ -22,7 +23,9 @@
 
 ## Qué entrega el módulo en disco
 
-`modulo/carga.js` (10 KB). API: `AD.carga = {progreso(p), listo(), entra()}`.
+`modulo/carga.js` (15 KB). API: `AD.carga = {progreso(p), listo(), entra()}`.
+Además: `escanea()` (recorre el DOM), `listas()`, `cuentaTexturas()`, `error(e)`
+(replica el aviso del `#cargando`), `pidePantalla()` (fullscreen + orientación).
 
 - **Overlay propio** (`#fab-carga`, z-index 120) con wordmark "Ars Domus",
   subtítulo, pista de arquitectura que rota, barra de progreso y botón

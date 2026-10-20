@@ -100,10 +100,14 @@ function css(){
    '#fab-carga .cif{margin-top:9px;font:500 10px/1 "IBM Plex Mono",monospace;letter-spacing:.18em;color:#7f8c7a}'+
    '#fab-carga .entrar{margin-top:26px;min-height:44px;padding:0 26px;background:transparent;'+
    'color:#0a0f0c;background:#c9ef63;border:0;border-radius:3px;cursor:pointer;'+
+   'display:inline-flex;align-items:center;justify-content:center;gap:10px;'+
    'font:700 11px/1 "IBM Plex Sans Condensed",sans-serif;letter-spacing:.2em;text-transform:uppercase;'+
    'opacity:0;pointer-events:none;transition:opacity .3s ease,transform .15s ease}'+
+   '#fab-carga .entrar svg{width:22px;height:22px;flex:0 0 22px}'+
    '#fab-carga .entrar.listo{opacity:1;pointer-events:auto}'+
    '#fab-carga .entrar:active{transform:scale(.96)}'+
+   '#fab-carga .cuenta{margin-top:10px;min-height:1.2em;font:500 10px/1.2 "IBM Plex Mono",monospace;'+
+   'letter-spacing:.16em;text-transform:uppercase;color:#5f6c5c}'+
    '@media (prefers-reduced-motion:reduce){#fab-carga .riel i{transition:none}#fab-carga{transition:none}}';
   document.head.appendChild(s);
 }
@@ -246,12 +250,22 @@ function listo(){
   EST.barra.style.width = '100%';
   EST.pctTxt.textContent = '100 %';
   EST.btn.classList.add('listo');
-  EST.btn.textContent = 'Entrar en la casa';
   if(EST.el) EST.el.classList.add('puede-entrar');
-  /* La puerta se ofrece sola a los 2 s: nadie debe esperar por un botón. */
-  setTimeout(function(){
-    if(!EST.abierto) entra();
-  }, 2200);
+  /* La puerta se ofrece sola a los 7 s: nadie debe esperar por un botón,
+     pero el que quiera tocar la puerta, toca. */
+  var reducir = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(reducir){ setTimeout(function(){ if(!EST.abierto) entra(); }, 1200); return; }
+  EST.n = 7;
+  if(EST.cuentaEl) EST.cuentaEl.textContent = 'Entra solo en 7 s';
+  EST.cuentaTimer = setInterval(function(){
+    EST.n--;
+    if(EST.n <= 0){
+      clearInterval(EST.cuentaTimer); EST.cuentaTimer = null;
+      if(!EST.abierto) entra();
+      return;
+    }
+    if(EST.cuentaEl) EST.cuentaEl.textContent = 'Entra solo en ' + EST.n + ' s';
+  }, 1000);
 }
 
 /* ── Entrar ───────────────────────────────────────────────────────────────── */
@@ -297,10 +311,16 @@ AD.carga = {progreso: progreso, listo: listo, entra: entra};
 function arranca(){
   EST.t0 = Date.now();
   crea();
+  /* El reloj de la carga: cada 300 ms se mira qué falta por llegar. */
+  if(!EST.reloj) EST.reloj = setInterval(function(){
+    if(EST.abierto){ clearInterval(EST.reloj); EST.reloj = null; return; }
+    actualiza();
+  }, 300);
   /* El watchdog: a los 12 s entra igual. El visor nunca se queda en negro. */
-  setTimeout(function(){ if(!EST.abierto){ progreso(1); listo(); } }, 12000);
-  /* Cuando el core termina, se sube la barra al 100 %. */
-  if(AD.alListo) AD.alListo(function(){ setTimeout(function(){ progreso(1); listo(); }, 350); });
+  setTimeout(function(){ if(!EST.abierto){ progreso(1); listo(); entra(); } }, 12000);
+  /* Cuando el core termina, se vuelve a mirar: si no queda nada por
+     cargar, la barra se completa sola (el progreso no se inventa). */
+  if(AD.alListo) AD.alListo(function(){ setTimeout(function(){ actualiza(); }, 350); });
 }
 if(document.readyState === 'loading') addEventListener('DOMContentLoaded', arranca);
 else arranca();
