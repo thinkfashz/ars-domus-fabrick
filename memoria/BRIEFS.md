@@ -68,3 +68,25 @@ Rehace `#cargando` (existe en `index.html` y lo oculta `visor.js` al final).
 - Además, en runtime, aplica el verde a los muros ya construidos (los muros interiores se pintan con `INT.estancias[].pared`; busca `construyeEstancias` y `MAT`).
 - API: `AD.paleta = {aplica(tema), temas:['limon','neutro'], tema()}`.
 - Memoria: `memoria/G-paleta.md`.
+
+---
+
+## Notas del coordinator (2026-10-20, cierre)
+
+- **El build borra `dist/` entero**, y con él el vínculo de Vercel (`.vercel/`).
+  Sin vínculo, `vercel deploy` crea un proyecto nuevo con el nombre de la carpeta
+  (salió uno llamado `dist`). `herramientas/build.mjs` ahora **guarda y restaura**
+  el vínculo. Si vuelve a pasar, `vercel api /v9/projects/<x> --method DELETE
+  --dangerously-skip-permissions` borra el proyecto espurio.
+- **Vercel Auth**: un proyecto nuevo del equipo nace con `ssoProtection:
+  all_except_custom_domains`, o sea, **protegido**. Para publicarlo:
+  `vercel api /v9/projects/<proyecto> --method PATCH --input <archivo.json>` con
+  `{"ssoProtection":{"deploymentType":"preview"}}`.
+- **El token de git de este entorno no tiene scope `workflow`**: no se puede subir
+  un archivo de `.github/workflows/`. Por eso el flujo de GitHub Pages queda
+  pendiente de un token con ese scope, y la URL pública seArma con Vercel.
+- Los agentes seirds parenting: el entorno (Android en PRoot) reinició el servidor
+  **diez veces** en la sesión. Los que dejaron su módulo escrito a destiempo
+  (D y F) lo hicieron con la versión final; el resto se reescribió a mano.
+  **Regla para la próxima**: los briefings van a `memoria/BRIEFS.md` en disco, no
+  solo en el prompt, y los agentes deben escribir el archivo pronto.

@@ -11,8 +11,21 @@ const RAIZ = fileURLToPath(new URL('..', import.meta.url));
 const CASA = resolve(process.cwd(), process.env.CASA || join(RAIZ, 'demo'));
 const DIST = join(RAIZ, 'dist');
 
+// El vinculo con Vercel (.vercel/project.json) NO se borra: si se pierde, el
+// siguiente despliegue crea un proyecto nuevo con el nombre de la carpeta.
+const VINCULO = join(DIST, '.vercel');
+let vinculo = null;
+if (existsSync(VINCULO)) {
+  vinculo = join(RAIZ, '.vercel-guardado');
+  rmSync(vinculo, { recursive: true, force: true });
+  cpSync(VINCULO, vinculo, { recursive: true });
+}
 rmSync(DIST, { recursive: true, force: true });
 mkdirSync(DIST);
+if (vinculo) {
+  cpSync(vinculo, VINCULO, { recursive: true });
+  rmSync(vinculo, { recursive: true, force: true });
+}
 const html = readFileSync(join(RAIZ, 'index.html'), 'utf8')
   .replace('/node_modules/three/build/three.min.js', 'three.min.js');
 if (html.includes('node_modules')) throw new Error('index.html aún apunta a node_modules');
