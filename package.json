@@ -1,0 +1,19 @@
+{
+  "name": "ars-domus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Visor 3D de una casa con three.js: la casa actual y una propuesta de reforma, para compararlas desde el mismo sitio",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "check": "node --check visor.js && node --check ${CASA:-demo}/casa.js && echo 'sintaxis OK'",
+    "build": "node herramientas/build.mjs",
+    "preview": "npm run build && npx vite preview --outDir dist --host 127.0.0.1 --port 5183 --strictPort"
+  },
+  "dependencies": {
+    "three": "0.128.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.1"
+  }
+}

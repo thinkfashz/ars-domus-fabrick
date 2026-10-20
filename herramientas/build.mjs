@@ -1,0 +1,29 @@
+// Versión estática del visor → dist/, lista para GitHub Pages (o cualquier hosting de ficheros).
+//   npm run build                 la casa de ejemplo (demo/)
+//   CASA=ruta npm run build       otra casa: su casa.js y sus texturas/
+// Sin servidor no hay cambios.json: lo que se mueve en «Mover objetos» se queda en el navegador y se
+// copia con «Copiar cambios». DOMINIO=… escribe el CNAME (sin él, no hay dominio propio).
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const RAIZ = fileURLToPath(new URL('..', import.meta.url));
+const CASA = resolve(process.cwd(), process.env.CASA || join(RAIZ, 'demo'));
+const DIST = join(RAIZ, 'dist');
+
+rmSync(DIST, { recursive: true, force: true });
+mkdirSync(DIST);
+const html = readFileSync(join(RAIZ, 'index.html'), 'utf8')
+  .replace('/node_modules/three/build/three.min.js', 'three.min.js');
+if (html.includes('node_modules')) throw new Error('index.html aún apunta a node_modules');
+writeFileSync(join(DIST, 'index.html'), html);
+cpSync(join(RAIZ, 'visor.js'), join(DIST, 'visor.js'));
+cpSync(join(RAIZ, 'node_modules/three/build/three.min.js'), join(DIST, 'three.min.js'));
+cpSync(join(RAIZ, 'manifest.webmanifest'), join(DIST, 'manifest.webmanifest'));
+cpSync(join(RAIZ, 'sw.js'), join(DIST, 'sw.js'));
+if (existsSync(join(RAIZ, 'iconos'))) cpSync(join(RAIZ, 'iconos'), join(DIST, 'iconos'), { recursive: true });
+cpSync(join(CASA, 'casa.js'), join(DIST, 'casa.js'));
+if (existsSync(join(CASA, 'texturas'))) cpSync(join(CASA, 'texturas'), join(DIST, 'texturas'), { recursive: true });
+writeFileSync(join(DIST, '.nojekyll'), '');
+if (process.env.DOMINIO) writeFileSync(join(DIST, 'CNAME'), process.env.DOMINIO + '\n');
+console.log('dist/ listo' + (process.env.DOMINIO ? ' para ' + process.env.DOMINIO : ''));

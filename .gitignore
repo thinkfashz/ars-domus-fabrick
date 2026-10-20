@@ -1,0 +1,27 @@
+# =====================================================================
+#  Qué NO se sube a este repo (es público)
+# =====================================================================
+
+# --- Datos de una casa real ------------------------------------------
+# Fotos, planos, Catastro y ortofotos dicen dónde está y cómo es una
+# casa concreta. Aquí solo va la casa de ejemplo.
+fotos/
+fuentes/
+
+# --- Node y build ----------------------------------------------------
+node_modules/
+dist/
+
+# --- Python ----------------------------------------------------------
+__pycache__/
+*.pyc
+.venv/
+
+# --- Ajustes locales de Claude Code ----------------------------------
+.claude/settings.local.json
+
+# --- Lo que se mueve en el visor (lo lee Claude y lo pasa a los datos) ---
+cambios.json
+
+# --- Las casas de verdad: privadas, nunca en este repo ---
+casas/

@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Ars Domus</title>
+<meta name="description" content="Paseo en primera persona por la maqueta 3D de la casa, con palanca táctil.">
+<meta name="theme-color" content="#0f120e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Build house">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="iconos/icono-180.png">
+<link rel="icon" href="iconos/icono-192.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --paper:#eef1e9; --surface:#fbfcf8; --surface-2:#f3f5ed;
+  --ink:#171b16; --ink-2:#3d453b; --muted:#6a7264; --line:#d3d9ca; --line-soft:#e3e8db;
+  --accent:#0c6a80; --accent-ink:#ffffff;
+  --sun:#a8650f;
+  --shadow:0 1px 2px rgba(23,27,22,.06), 0 8px 24px rgba(23,27,22,.10);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0f120e; --surface:#181c16; --surface-2:#20251e;
+    --ink:#e9ede2; --ink-2:#c2c9b9; --muted:#8d9683; --line:#2c3328; --line-soft:#242a20;
+    --accent:#4ab5cb; --accent-ink:#06222a;
+    --sun:#e0a45c;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 30px rgba(0,0,0,.45);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0f120e; --surface:#181c16; --surface-2:#20251e;
+  --ink:#e9ede2; --ink-2:#c2c9b9; --muted:#8d9683; --line:#2c3328; --line-soft:#242a20;
+  --accent:#4ab5cb; --accent-ink:#06222a;
+  --sun:#e0a45c;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 30px rgba(0,0,0,.45);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:14px; line-height:1.45; overflow:hidden; -webkit-font-smoothing:antialiased;
+}
+#escena{position:fixed; inset:0}
+#escena canvas{display:block; width:100%; height:100%; touch-action:none}
+
+.rotulo{
+  font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
+  font-weight:600; font-size:10.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--muted);
+}
+
+#panel{
+  position:fixed; top:16px; left:16px; width:292px; max-height:calc(100dvh - 32px);
+  display:flex; flex-direction:column; overflow:hidden;
+  background:var(--surface); border:1px solid var(--line); border-radius:4px;
+  box-shadow:var(--shadow); z-index:20;
+}
+#panel > .scroll{overflow-y:auto; overscroll-behavior:contain}
+
+.cabecera{padding:14px 16px 12px; border-bottom:1px solid var(--line)}
+.cabecera h1{margin:0; font-size:18px; font-weight:600; letter-spacing:-.015em; line-height:1.15}
+.cabecera .sub{margin-top:4px; color:var(--muted); font-size:12px; line-height:1.35}
+.cabecera .enlace{display:inline-block; margin-top:5px; font-size:12px; font-weight:600; color:var(--accent); text-decoration:none}
+.cabecera .enlace:hover{text-decoration:underline; text-underline-offset:2px}
+.bloque{padding:13px 16px; border-bottom:1px solid var(--line-soft)}
+.bloque:last-child{border-bottom:0}
+.bloque > .rotulo{display:block; margin-bottom:9px}
+
+.capas{display:flex; flex-direction:column; gap:1px}
+.capa{display:flex; align-items:center; gap:9px; padding:4px 6px; margin:0 -6px;
+  border-radius:3px; cursor:pointer; user-select:none; font-size:13px; color:var(--ink-2)}
+.capa:hover{background:var(--surface-2)}
+.capa input{position:absolute; opacity:0; width:0; height:0}
+.marca{width:14px; height:14px; flex:none; border:1.5px solid var(--muted); border-radius:2px;
+  display:grid; place-items:center; transition:background .12s, border-color .12s}
+.marca svg{width:10px; height:10px; stroke:var(--accent-ink); stroke-width:2.6; fill:none; opacity:0}
+.capa input:checked + .marca{background:var(--accent); border-color:var(--accent)}
+.capa input:checked + .marca svg{opacity:1}
+.capa input:focus-visible + .marca{outline:2px solid var(--accent); outline-offset:2px}
+.capa .swatch{width:9px; height:9px; border-radius:1px; margin-left:auto; flex:none}
+
+.fechas{display:flex; gap:4px; margin-bottom:11px}
+.chip{flex:1; padding:5px 2px; text-align:center; cursor:pointer; background:transparent;
+  color:var(--ink-2); border:1px solid var(--line); border-radius:3px; font:inherit;
+  font-size:11.5px; font-family:"IBM Plex Sans Condensed",sans-serif; font-weight:500}
+.chip:hover{border-color:var(--muted)}
+.chip[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+.chip:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+
+.reloj{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:5px}
+.reloj .hora{font-family:"IBM Plex Mono",monospace; font-size:19px; font-weight:500; letter-spacing:-.02em}
+.reloj .estado{font-size:11.5px; color:var(--muted)}
+input[type="range"]{width:100%; accent-color:var(--accent); margin:2px 0 9px}
+input[type="range"]:focus-visible{outline:2px solid var(--accent); outline-offset:3px}
+.solar{display:grid; grid-template-columns:auto 1fr auto 1fr; gap:3px 8px; font-size:12px; align-items:baseline}
+.solar span:nth-child(odd){color:var(--muted)}
+.solar b{font-family:"IBM Plex Mono",monospace; font-weight:500; font-variant-numeric:tabular-nums}
+
+.vistas{display:grid; grid-template-columns:repeat(2,1fr); gap:4px}
+.subrotulo{display:block; margin:10px 0 5px; font-size:11.5px; color:var(--muted)}
+.bloque > .rotulo + .subrotulo{margin-top:0}
+.version{display:flex; gap:4px; margin-top:11px}
+.version .chip{padding:7px 4px; font-size:12.5px}
+.chip:disabled{opacity:.45; cursor:default}
+.propuesta{margin:10px 0 0; padding:8px 10px; border-left:2px solid var(--accent);
+  background:var(--surface-2); color:var(--ink-2); font-size:12px; line-height:1.5}
+.propuesta[hidden]{display:none}
+#version-pie{position:fixed; left:16px; bottom:16px; z-index:20; font:inherit; font-size:12.5px; font-weight:600;
+  padding:7px 12px; cursor:pointer; background:var(--surface); color:var(--ink); border:1px solid var(--accent);
+  border-radius:4px; box-shadow:var(--shadow)}
+#version-pie:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+/* correr, para el móvil (en el teclado es Mayús): encima del de la versión, a mano del pulgar izquierdo */
+#correr-pie{position:fixed; left:16px; bottom:60px; z-index:20; font:inherit; font-size:12.5px; font-weight:600;
+  padding:9px 16px; cursor:pointer; background:var(--surface); color:var(--ink); border:1px solid var(--line);
+  border-radius:4px; box-shadow:var(--shadow)}
+#correr-pie[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+#correr-pie:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+/* noche, encima de correr: salta a las 22:00 y enciende las luces de la estancia */
+#noche-pie{position:fixed; left:16px; bottom:104px; z-index:20; font:inherit; font-size:12.5px; font-weight:600;
+  padding:7px 12px; cursor:pointer; background:var(--surface); color:var(--ink); border:1px solid var(--line);
+  border-radius:4px; box-shadow:var(--shadow)}
+#noche-pie[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+#noche-pie:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+/* mover lo que hay en la mira, encima de noche */
+#llevar-pie{position:fixed; left:16px; bottom:148px; z-index:20; font:inherit; font-size:12.5px; font-weight:600;
+  padding:7px 12px; cursor:pointer; background:var(--surface); color:var(--ink); border:1px solid var(--line);
+  border-radius:4px; box-shadow:var(--shadow)}
+#llevar-pie[aria-pressed="true"]{background:#ffc400; border-color:#ffc400; color:#1f1d1c}
+#llevar-pie:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+/* encender todas las luces, encima de mover */
+#todo-pie{position:fixed; left:16px; bottom:192px; z-index:20; font:inherit; font-size:12.5px; font-weight:600;
+  padding:7px 12px; cursor:pointer; background:var(--surface); color:var(--ink); border:1px solid var(--line);
+  border-radius:4px; box-shadow:var(--shadow)}
+#todo-pie[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+#todo-pie:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+/* en el paseo, la ficha sube para no tapar los botones de abajo */
+body.a-pie #hud{bottom:240px}
+/* en la mejorada, un filete de color arriba recuerda qué versión se está viendo */
+body.mejorada::before{content:"Versión mejorada"; position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:15;
+  background:var(--accent); color:var(--accent-ink); font:600 11px/1 "IBM Plex Sans Condensed",sans-serif;
+  letter-spacing:.1em; text-transform:uppercase; padding:6px 10px; border-radius:3px; pointer-events:none}
+.chip.ancho{width:100%; padding:7px 4px}
+.ayuda{margin:8px 0 0; color:var(--muted); font-size:11.5px; line-height:1.45}
+#pie-hud[hidden]{display:none!important}
+#mira{position:fixed; left:50%; top:50%; width:6px; height:6px; margin:-3px 0 0 -3px; z-index:15;
+  border-radius:50%; background:rgba(255,255,255,.9); box-shadow:0 0 0 1.5px rgba(0,0,0,.45); pointer-events:none}
+/* ---- palanca táctil del paseo: base flotante que nace donde apoyas el pulgar ----
+   No va anclada a un punto fijo: aparece bajo el dedo y se mueve con él, que es lo que
+   hace falta en un móvil (el pulgar no cae siempre en el mismo sitio). Solo se ve en
+   dispositivos táctiles, en el paseo. */
+#palanca{position:fixed; left:-999px; top:-999px; z-index:18; width:132px; height:132px; margin:-66px 0 0 -66px;
+  border-radius:50%; pointer-events:none; opacity:0; transition:opacity .13s ease;
+  border:2px solid rgba(255,255,255,.30);
+  background:radial-gradient(circle,rgba(255,255,255,.10),rgba(255,255,255,.02) 70%);
+  box-shadow:0 2px 14px rgba(0,0,0,.34), inset 0 0 0 1px rgba(0,0,0,.16);
+  display:grid; place-items:center; -webkit-user-select:none; user-select:none}
+#palanca.on{opacity:1}
+#palanca::after{content:""; position:absolute; inset:17px; border-radius:50%;
+  border:1px dashed rgba(255,255,255,.16)}
+#palanca .pomo{width:54px; height:54px; border-radius:50%; will-change:transform;
+  background:radial-gradient(circle at 34% 28%,#fff,#d2d2d2 58%,#9c9c9c);
+  box-shadow:0 3px 10px rgba(0,0,0,.45), inset 0 -2px 4px rgba(0,0,0,.22)}
+/* fuera de la zona muerta: el aro se avisa, para que se vea que ya se está andando */
+#palanca.mueve{border-color:rgba(255,255,255,.58)}
+/* pasado el 85 % ya se corre: el pomo se pone de color */
+#palanca.corre .pomo{background:radial-gradient(circle at 34% 28%,#fff,var(--accent) 62%,var(--accent) 100%)}
+/* la mitad izquierda se insinúa al entrar en el paseo, para que se vea que hay palanca */
+#zona-move{position:fixed; left:0; bottom:0; width:46vw; height:62vh; z-index:13; pointer-events:none;
+  opacity:0; transition:opacity .25s ease}
+body.a-pie.tactil #zona-move{opacity:.05;
+  background:radial-gradient(ellipse at 42% 104%,#fff,rgba(255,255,255,0) 68%);
+  border-right:1px dashed rgba(255,255,255,.14)}
+/* el anillo exterior marca el recorrido hasta correr */
+#palanca .correr{position:absolute; inset:6px; border-radius:50%;
+  border:1px solid rgba(255,255,255,.22); opacity:0; transition:opacity .12s}
+#palanca.corre .correr{opacity:1; border-color:var(--accent)}
+#pie-aviso{position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:20;
+  background:var(--surface); border:1px solid var(--line); border-radius:4px; box-shadow:var(--shadow);
+  padding:8px 12px; font-size:12px; color:var(--ink-2); text-align:center; display:grid; gap:2px;
+  max-width:calc(100vw - 32px); pointer-events:none}
+/* los tres deslizadores de luz, en columna, con su valor a la derecha */
+.campo{display:grid; grid-template-columns:1fr auto; align-items:center; gap:2px 8px; margin:9px 0 0;
+  font-size:12.5px; font-weight:600; color:var(--ink-2)}
+.campo b{font:500 12px "IBM Plex Mono",monospace; color:var(--ink); text-align:right}
+.campo input[type=range]{grid-column:1/-1; width:100%; margin:2px 0 0}
+#pres-luz .chip{padding:7px 10px; font-size:12px}
+#pres-luz .chip[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+/* caja de ajustes del paseo: se abre encima del aviso, en columna y con el dedo */
+#ajustes-pie{position:fixed; left:16px; bottom:236px; z-index:20; font:inherit; font-size:12.5px;
+  font-weight:600; padding:7px 12px; cursor:pointer; background:var(--surface); color:var(--ink);
+  border:1px solid var(--line); border-radius:4px; box-shadow:var(--shadow)}
+#ajustes-pie[aria-expanded="true"]{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+#ajustes-pie:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+#ajustes-caja{position:fixed; left:16px; bottom:272px; z-index:21; width:min(300px,calc(100vw - 32px));
+  padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-radius:6px;
+  box-shadow:var(--shadow); display:grid; gap:2px}
+#ajustes-caja[hidden]{display:none!important}
+#ajustes-caja > .rotulo{margin-bottom:4px}
+.casilla{display:flex; align-items:center; gap:8px; margin:9px 0 0; font-size:12.5px;
+  font-weight:600; color:var(--ink-2); cursor:pointer}
+.casilla input{width:17px; height:17px; accent-color:var(--accent); cursor:pointer}
+/* ---- barra del tour de calles: abajo, centrada, con el avance y el ritmo ---- */
+#tour-hud{position:fixed; left:50%; bottom:14px; transform:translateX(-50%); z-index:22;
+  width:min(560px,calc(100vw - 24px)); display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  padding:8px 10px; background:var(--surface); border:1px solid var(--line); border-radius:8px;
+  box-shadow:var(--shadow); -webkit-user-select:none; user-select:none}
+#tour-hud[hidden]{display:none!important}
+#tour-hud button{font:inherit; font-size:12.5px; font-weight:600; padding:8px 12px; cursor:pointer;
+  background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:4px;
+  min-height:40px; white-space:nowrap}
+#tour-play{background:var(--accent); border-color:var(--accent); color:var(--accent-ink); min-width:84px}
+#tour-play:focus-visible,#tour-hud button:focus-visible,#tour-lista:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+#tour-barra{flex:1 1 90px; min-width:70px; height:5px; border-radius:3px; background:var(--line);
+  overflow:hidden; pointer-events:none}
+#tour-barra i{display:block; height:100%; width:0; background:var(--accent); border-radius:3px}
+#tour-cual{flex:1 1 130px; display:flex; min-width:0}
+#tour-lista{font:inherit; font-size:12.5px; font-weight:500; width:100%; color:var(--ink);
+  background:var(--surface-2); border:1px solid var(--line); border-radius:4px; padding:9px 8px;
+  min-height:40px; cursor:pointer}
+#tour-vel{flex:1 1 110px; display:flex; align-items:center; gap:7px; font-size:12px;
+  font-weight:600; color:var(--ink-2)}
+#tour-vel input{flex:1; min-width:54px; accent-color:var(--accent); height:28px}
+/* con el tour en marcha el aviso de abajo sobra: ocupa su sitio */
+body.tourando #pie-aviso{display:none}
+body.tourando #zona-move{display:none}
+.sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap}
+#pie-aviso b{color:var(--ink); font-weight:600}
+/* la ayuda cambia según se venga con teclado o con el dedo */
+.tactil-ayuda{display:none}
+body.tactil .tactil-ayuda{display:inline}
+body.tactil .teclado-ayuda{display:none}
+#salir-pie{position:fixed; right:16px; bottom:16px; z-index:20; font:inherit; font-size:12.5px;
+  padding:7px 12px; cursor:pointer; background:var(--surface); color:var(--ink); border:1px solid var(--line);
+  border-radius:4px; box-shadow:var(--shadow)}
+#salir-pie:hover{border-color:var(--muted)}
+/* botón de la puerta cercana: encima del aviso, a mano del pulgar derecho en el móvil */
+/* atajos del paseo: arriba a la izquierda, un desplegable que el móvil abre con su propia lista */
+#ir-pie{position:fixed; left:16px; top:16px; z-index:20; display:flex; align-items:center; gap:8px;
+  background:var(--surface); border:1px solid var(--line); border-radius:4px; box-shadow:var(--shadow);
+  padding:4px 4px 4px 10px; font-size:12.5px; font-weight:600; color:var(--ink)}
+#ir-pie select{font:inherit; font-weight:500; color:var(--ink); background:var(--surface-2); border:1px solid var(--line);
+  border-radius:3px; padding:6px 8px; max-width:62vw; cursor:pointer}
+#ir-pie select:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+#puerta-pie{position:fixed; right:16px; bottom:60px; z-index:20; font:inherit; font-size:12.5px; font-weight:600;
+  padding:9px 14px; cursor:pointer; background:var(--surface); color:var(--ink); border:1px solid var(--accent);
+  border-radius:4px; box-shadow:var(--shadow)}
+#puerta-pie[hidden], #hud-puerta[hidden]{display:none!important}
+#puerta-pie:focus-visible, #hud-puerta:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+#hud-puerta{margin-top:10px; width:100%; font:inherit; font-size:12.5px; padding:7px 10px; cursor:pointer;
+  background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:4px}
+#hud-puerta:hover{border-color:var(--muted)}
+#salir-pie:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+body.a-pie #panel, body.a-pie #abrir-panel, body.a-pie #escala{display:none}
+
+#hud{position:fixed; left:16px; bottom:16px; width:292px; z-index:20;
+  background:var(--surface); border:1px solid var(--line); border-radius:4px;
+  box-shadow:var(--shadow); padding:12px 14px}
+#hud[hidden]{display:none!important}
+#hud .cabeza{display:flex; align-items:center; gap:8px; margin-bottom:2px; padding-right:24px}
+#hud-id{font:500 11.5px "IBM Plex Mono",monospace; padding:1px 6px; cursor:copy; color:var(--ink);
+  background:var(--surface-2); border:1px solid var(--line); border-radius:3px}
+#hud-id:hover{border-color:var(--muted)}
+#hud-id:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+#hud-id[hidden]{display:none}
+#hud-punto{display:block; margin-top:8px; font:500 11.5px "IBM Plex Mono",monospace; padding:3px 7px; cursor:copy;
+  color:#b33a26; background:transparent; border:1px solid var(--line); border-radius:3px}
+#hud-punto::before{content:"\25CF  "}
+#hud-punto:hover{border-color:var(--muted)}
+#hud-punto[hidden]{display:none}
+#ids{position:fixed; inset:0; pointer-events:none; z-index:11}
+#ed-panel[hidden]{display:none}
+.ed-sel{margin:8px 0 6px; font:500 12px "IBM Plex Mono",monospace; color:var(--ink); word-break:break-word}
+.ed-botones{display:grid; grid-template-columns:repeat(2,1fr); gap:4px}
+.ed-estado{margin:8px 0 0; font-size:11.5px; color:var(--muted)}
+.ed-rect{position:fixed; z-index:30; border:1.5px dashed #ffc400; background:rgba(255,196,0,.12); pointer-events:none}
+body.editando #escena canvas{cursor:crosshair}
+.etq-id{position:absolute; transform:translate(-50%,-50%); white-space:nowrap;
+  font:500 10.5px/1 "IBM Plex Mono",monospace; padding:2px 4px; border-radius:3px;
+  background:rgba(20,20,20,.72); color:#fff}
+.etq-id.t-muro, .etq-id.t-hueco{background:rgba(70,90,120,.7); font-size:9.5px}
+.etq-id.t-estancia{background:rgba(160,80,30,.85); font-size:12px}
+.etq-id.t-arbol{background:rgba(40,90,40,.75)}
+#hud h2{margin:0 0 8px; font-size:15px; font-weight:600; letter-spacing:-.01em; padding-right:20px}
+#hud .datos{display:grid; grid-template-columns:1fr auto; gap:4px 12px; font-size:12.5px}
+#hud .datos span:nth-child(odd){color:var(--muted)}
+#hud .datos span:nth-child(even){font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums}
+#hud .nota{margin:9px 0 0; padding-top:9px; border-top:1px solid var(--line-soft);
+  color:var(--muted); font-size:11.5px; line-height:1.5}
+#cerrar-hud{position:absolute; top:8px; right:8px; width:22px; height:22px; padding:0;
+  background:transparent; border:0; color:var(--muted); cursor:pointer; font-size:15px;
+  line-height:1; border-radius:3px}
+#cerrar-hud:hover{background:var(--surface-2); color:var(--ink)}
+
+#brujula{position:fixed; top:16px; right:16px; width:66px; height:66px; z-index:15;
+  background:var(--surface); border:1px solid var(--line); border-radius:50%;
+  box-shadow:var(--shadow); display:grid; place-items:center}
+#brujula svg{width:48px; height:48px}
+
+#etiquetas{position:fixed; inset:0; pointer-events:none; z-index:10}
+.etq{position:absolute; transform:translate(-50%,-50%); white-space:nowrap;
+  font-family:"IBM Plex Sans Condensed",sans-serif; font-weight:600; font-size:10.5px;
+  letter-spacing:.07em; text-transform:uppercase; color:var(--ink);
+  background:var(--surface); border:1px solid var(--line); border-radius:2px; padding:2px 6px}
+
+#escala{position:fixed; right:16px; bottom:16px; z-index:15; text-align:right;
+  color:var(--muted); font-family:"IBM Plex Mono",monospace; font-size:11px}
+#escala .barra{height:4px; border:1px solid var(--muted); border-top:0; margin-top:3px}
+
+#abrir-panel{display:none}
+#cargando{position:fixed; inset:0; display:grid; place-items:center; z-index:40;
+  background:var(--paper); color:var(--muted)}
+#cargando[hidden]{display:none!important}
+
+@media (max-width:860px){
+  #panel{top:auto; bottom:0; left:0; right:0; width:auto; max-height:72dvh;
+    border-radius:8px 8px 0 0; border-left:0; border-right:0; border-bottom:0;
+    transform:translateY(100%); transition:transform .22s ease}
+  #panel.abierto{transform:translateY(0)}
+  #abrir-panel{display:block; position:fixed; left:12px; bottom:12px; z-index:25;
+    padding:9px 14px; background:var(--surface); color:var(--ink); border:1px solid var(--line);
+    border-radius:4px; box-shadow:var(--shadow); font:inherit; font-size:13px;
+    font-weight:500; cursor:pointer}
+  #panel.abierto ~ #abrir-panel{display:none}
+  #hud{left:12px; right:12px; width:auto; bottom:64px}
+  #escala{display:none}
+  #brujula{width:54px; height:54px; top:12px; right:12px}
+  #brujula svg{width:38px; height:38px}
+}
+@media (prefers-reduced-motion:reduce){ *{transition-duration:.01ms!important} }
+</style>
+<script>
+/* Pinta en pantalla cualquier error de carga o ejecución, para no depender de la consola. */
+window.addEventListener('error', function(e){
+  var c = document.getElementById('cargando');
+  if(!c) return;
+  var t = e.target && e.target !== window && (e.target.src || e.target.href);
+  var msg = t ? 'No se pudo cargar ' + t
+              : String(e.message) + ' — ' + (e.filename || '').split('/').pop() + ':' + e.lineno;
+  c.hidden = false;
+  c.innerHTML = '<span class="rotulo" style="max-width:60ch;text-align:center">' +
+                msg.replace(/</g, '&lt;') + '</span>';
+}, true);
+</script>
+</head>
+<body>
+<div id="escena"></div>
+<div id="etiquetas"></div>
+<div id="ids"></div>
+<div id="cargando"><span class="rotulo">Levantando la maqueta…</span></div>
+
+<aside id="panel">
+  <div class="scroll">
+    <div class="cabecera">
+      <h1></h1>
+      <div class="sub"></div>
+      <div class="version" role="group" aria-label="Versión de la casa">
+        <button id="v-actual" class="chip" type="button" aria-pressed="true">Actual</button>
+        <button id="v-mejorada" class="chip" type="button" aria-pressed="false">Mejorada</button>
+      </div>
+    </div>
+
+    <div class="bloque">
+      <span class="rotulo">A pie</span>
+      <button id="a-pie" class="chip ancho" type="button" aria-pressed="false">Recorrer la finca a pie</button>
+      <button id="tour-ir" class="chip ancho" type="button" aria-pressed="false" style="margin-top:6px">Tour guiado por los caminos</button>
+      <p class="ayuda">WASD o flechas para andar, ratón para mirar, Mayús corre, E abre puertas, V cambia de versión.
+        En el móvil, el lado izquierdo anda, el derecho mira y un toque abre la ficha de lo que tocas.
+        El <b>tour</b> recorre solo el eje de un camino, a la altura de una persona.</p>
+    </div>
+
+    <div class="bloque">
+      <span class="rotulo">Navegar</span>
+      <p class="ayuda" style="margin-top:0">Arrastrar gira; botón derecho (o Mayús+arrastrar) desplaza; la rueda acerca hacia donde
+        apunta el ratón; doble clic centra la vista en ese punto. Teclado: WASD desplaza, flechas giran, + y − acercan.</p>
+    </div>
+
+    <div class="bloque">
+      <span class="rotulo">Mover objetos</span>
+      <button id="ed-activo" class="chip ancho" type="button" aria-pressed="false">Mover objetos</button>
+      <div id="ed-panel" hidden>
+        <p class="ayuda">Clic elige; Mayús+clic (o «Grupo») añade; Ctrl+arrastrar hace un recuadro.
+          Arrastra lo elegido por el suelo (Alt: de 10 en 10 cm). Flechas: 10 cm (Mayús, 1 cm). R/F suben y bajan 10 cm (Mayús, 1 cm). Q/E giran 15° (Mayús, 1°).
+          «Eliminar» (o Supr) quita lo elegido. «Volver atrás» (o Ctrl+Z) deshace el último cambio, también después de recargar. Lo que muevas me llega a mí para fijarlo en la maqueta.</p>
+        <p class="ed-sel" id="ed-sel">Nada elegido</p>
+        <div class="ed-botones">
+          <button id="ed-grupo" class="chip" type="button" aria-pressed="false">Grupo</button>
+          <button id="ed-estancia" class="chip" type="button">Toda la estancia</button>
+          <button id="ed-subir" class="chip" type="button" aria-label="Subir 10 cm">↑ 10 cm</button>
+          <button id="ed-bajar" class="chip" type="button" aria-label="Bajar 10 cm">↓ 10 cm</button>
+          <button id="ed-izq" class="chip" type="button" aria-label="Girar 15° a la izquierda">↺ 15°</button>
+          <button id="ed-der" class="chip" type="button" aria-label="Girar 15° a la derecha">↻ 15°</button>
+          <button id="ed-soltar" class="chip" type="button">Soltar</button>
+          <button id="ed-copiar" class="chip" type="button">Copiar cambios</button>
+          <button id="ed-deshacer" class="chip" type="button">Volver atrás</button>
+          <button id="ed-eliminar" class="chip" type="button">Eliminar</button>
+        </div>
+        <p class="ed-estado" id="ed-estado">Sin cambios</p>
+        <span class="subrotulo">Añadir luz</span>
+        <p class="ayuda" style="margin-top:0">Elige el tipo y pincha donde va: foco, colgante, plafón y tira, en el techo de encima
+          (vale pinchar el suelo); el aplique, en la cara de una pared (a 2 m); farola y baliza, en el suelo. Se queda
+          puesto para añadir varias; Esc o el mismo botón lo quitan. Luego se mueven y se eliminan como lo demás.</p>
+        <div class="ed-botones" id="ed-luces"></div>
+      </div>
+    </div>
+
+    <div class="bloque">
+      <span class="rotulo">Capas</span>
+      <div class="capas" id="capas"></div>
+    </div>
+
+    <div class="bloque">
+      <span class="rotulo">Vistas</span>
+      <span class="subrotulo">Fuera</span>
+      <div class="vistas" id="vistas-fuera"></div>
+      <span class="subrotulo">Dentro</span>
+      <div class="vistas" id="vistas-dentro"></div>
+      <p class="propuesta" id="propuesta" hidden></p>
+    </div>
+
+    <div class="bloque">
+      <span class="rotulo">Luces</span>
+      <button id="noche" class="chip ancho" type="button" aria-pressed="false">Ver de noche (N)</button>
+      <p class="ayuda">De noche se encienden solas las luces de la estancia donde estás. Las de fuera van apagadas; enciéndelas por grupos:</p>
+      <div class="vistas" id="luces-fuera"></div>
+      <button id="luces-todo" class="chip ancho" type="button" aria-pressed="false" style="margin-top:8px">Encender todo</button>
+      <p class="ayuda" id="fps" style="margin-top:4px"></p>
+    </div>
+
+    <div class="bloque">
+      <span class="rotulo">Recorrido del sol</span>
+      <div class="fechas" id="fechas"></div>
+      <div class="reloj">
+        <span class="hora" id="hora">13:00</span>
+        <span class="estado" id="estado-sol"></span>
+      </div>
+      <input type="range" id="slider-hora" min="240" max="1380" step="5" value="780" aria-label="Hora">
+      <div class="solar">
+        <span>Altura</span><b id="altura-sol">—</b>
+        <span>Azimut</span><b id="azimut-sol">—</b>
+      </div>
+    </div>
+
+    <div class="bloque">
+      <span class="rotulo">Luz y ambiente</span>
+      <div class="fechas" id="pres-luz" role="group" aria-label="Ambiente"></div>
+      <label class="campo">Exposición<b id="luz-exp-v">1.00</b>
+        <input type="range" id="luz-exp" min="0.5" max="1.8" step="0.02" aria-label="Exposición"></label>
+      <label class="campo">Rebote<b id="luz-rebote-v">1.00</b>
+        <input type="range" id="luz-rebote" min="0" max="2.5" step="0.05" aria-label="Rebote"></label>
+      <label class="campo">Bruma<b id="luz-niebla-v">1.00</b>
+        <input type="range" id="luz-niebla" min="0.3" max="2.5" step="0.05" aria-label="Bruma"></label>
+      <p class="ayuda">El <b>rebote</b> es la luz que rebota el suelo y el cielo: si sube, los interiores
+        se aclaran y las sombras se ensanchan; si baja, la escena se vuelve contrastada.
+        La <b>bruma</b> es la niebla que se ve a lo lejos. Se recuerda al volver.</p>
+    </div>
+  </div>
+</aside>
+
+<button id="abrir-panel" type="button">Controles</button>
+
+<div id="hud" hidden>
+  <button id="cerrar-hud" type="button" aria-label="Cerrar">&times;</button>
+  <div class="cabeza"><span class="rotulo tipo" id="hud-tipo"></span><button id="hud-id" type="button" hidden></button></div>
+  <h2 id="hud-nombre"></h2>
+  <div class="datos" id="hud-datos"></div>
+  <button id="hud-punto" type="button" hidden></button>
+  <p class="nota" id="hud-nota" hidden></p>
+  <button id="hud-puerta" type="button" hidden></button>
+</div>
+
+<div id="brujula" title="Norte">
+  <svg viewBox="0 0 48 48" aria-hidden="true">
+    <g id="aguja">
+      <path d="M24 5 L30 26 L24 22 L18 26 Z" fill="var(--accent)"/>
+      <path d="M24 43 L18 22 L24 26 L30 22 Z" fill="var(--muted)" opacity=".5"/>
+      <text x="24" y="15" text-anchor="middle" font-size="9" font-weight="600"
+            font-family="IBM Plex Sans Condensed, sans-serif" fill="var(--surface)">N</text>
+    </g>
+  </svg>
+</div>
+
+<div id="pie-hud" hidden>
+  <div id="mira" aria-hidden="true"></div>
+  <div id="zona-move" aria-hidden="true"></div>
+  <div id="palanca" aria-hidden="true"><span class="correr"></span><span class="pomo"></span></div>
+  <div id="pie-aviso"><b id="pie-estado">Haz clic o arrastra para mirar</b>
+    <span class="teclado-ayuda">WASD / flechas · Mayús corre · E abre y cierra puertas · M mueve lo que miras · N noche · V cambia de versión · Esc sale</span>
+    <span class="tactil-ayuda">Palanca izquierda: anda, y si la llevas al aro, corre · derecha: arrastra para mirar · toque corto: ficha de lo que tocas</span></div>
+  <label id="ir-pie"><span>Ir a</span><select id="ir-pie-lista"></select></label>
+  <button id="puerta-pie" type="button" hidden></button>
+  <button id="salir-pie" type="button">Salir del paseo</button>
+  <button id="version-pie" type="button">Ver la mejorada</button>
+  <button id="correr-pie" type="button" aria-pressed="false">Correr</button>
+  <button id="noche-pie" type="button" aria-pressed="false">Ver de noche</button>
+  <button id="llevar-pie" type="button" aria-pressed="false">Mover lo que miras</button>
+  <button id="todo-pie" type="button" aria-pressed="false">Encender todo</button>
+  <button id="ajustes-pie" type="button" aria-expanded="false" aria-controls="ajustes-caja">Ajustes</button>
+</div>
+
+<div id="ajustes-caja" hidden>
+  <span class="rotulo">Cómo se maneja</span>
+  <label class="campo">Sensibilidad<b id="pie-sens-v">1.00</b>
+    <input type="range" id="pie-sens" min="0.3" max="2.5" step="0.05" aria-label="Sensibilidad de la mirada"></label>
+  <label class="campo">Visión<b id="pie-fov-v">72°</b>
+    <input type="range" id="pie-fov" min="60" max="95" step="1" aria-label="Campo de visión"></label>
+  <label class="casilla"><input type="checkbox" id="pie-invy"><span>Invertir el eje vertical</span></label>
+  <label class="casilla"><input type="checkbox" id="pie-bamb"><span>Vaivén de la cabeza al andar</span></label>
+  <p class="ayuda">Se recuerda para la próxima vez. El <b>vaivén</b> son unos tres centímetros de
+    salto por zancada; si mareas, apágalo.</p>
+</div>
+
+<div id="escala"><span id="escala-txt">10 m</span><div class="barra" id="escala-barra" style="width:80px"></div></div>
+
+<div id="tour-hud" hidden>
+  <button id="tour-play" type="button" aria-pressed="true" aria-label="Pausa el recorrido">Pausa</button>
+  <button id="tour-inicio" type="button" aria-label="Volver al principio">&#8635;</button>
+  <div id="tour-barra" role="progressbar" aria-label="Avance del recorrido"><i id="tour-avance"></i></div>
+  <label id="tour-cual"><span class="sr">Camino</span>
+    <select id="tour-lista"></select></label>
+  <label id="tour-vel"><span>Ritmo</span>
+    <input type="range" id="tour-ritmo" min="0.6" max="4" step="0.1" value="2" aria-label="Ritmo"></label>
+  <button id="tour-out" type="button">Salir</button>
+</div>
+
+<script src="/node_modules/three/build/three.min.js"></script>
+<script src="casa.js"></script>
+<script src="visor.js"></script>
+<script>
+// Instalable como app: registra el service worker (que abre la maqueta sin conexión) y,
+// cuando ya está todo en caché, avisa con un aviso de Android de que se puede instalar.
+if('serviceWorker' in navigator){
+  addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').then(function(reg){
+      reg.addEventListener('updatefound', function(){
+        var n = reg.installing;
+        if(n) n.addEventListener('statechange', function(){ if(n.state === 'installed') location.reload(); });
+      });
+    }).catch(function(){});
+  });
+}
+</script>
+</body>
+</html>
