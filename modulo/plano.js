@@ -31,14 +31,18 @@ var CORTE = 1.15;              // m sobre el piso terminado: altura del corte de
 var GROSOR_PANEL = 0.026;      // m: canto de la tapa de poché
 var PX_M = 40;                 // px por metro del dibujo 2D (el SVG se escala solo)
 var MARGEN = 1.8;              // m de margen alrededor de la planta
+var HFOV_OBJ = 70;             // FOV horizontal objetivo de la planta (límites 50–94)
+var FOV_MIN = 50, FOV_MAX = 94;   // límites del FOV, en horizontal y en vertical
+var TOQUE_UMBRAL = 10;         // px: a partir de aquí el gesto es una órbita, no un toque
+var TEX_MAX = 1280;            // px: lado mayor de la textura de anotación (memoria del móvil)
 
 var EST = {
   montado:false, abierto:false, plan3D:false, codigos:false,
   panel:null, svg:null, btn:null, overlay:null, hud3d:null, lista:null,
   gPlan:null, tex:null, lienzo:null, ctx:null,
   guardado:null,               // estado de la escena antes de entrar en modo planta
-  PL:{x:0, z:0, dist:30, theta:0, phi:0.62, fov:42},
-  act:{id:null, x:0, y:0, mx:0, my:0, pinza:0, mov:0, n:0}
+  PL:{x:0, z:0, dist:30, theta:0, phi:0.30, fov:42},
+  act:{id:null, x:0, y:0, mx:0, my:0, pinza:0, mov:0, n:0, d0:0, dmax:0, t0:0}
 };
 
 var NORMAL = {N:[0,-1], S:[0,1], E:[1,0], O:[-1,0]};
@@ -67,11 +71,27 @@ var HUELLA = {
    1 · Acceso al contrato y conversión de coordenadas
    ===================================================================================== */
 function api(){ return AD.api || {}; }
-function muros(){ return (api().C && api().C.muros) || []; }
-function huecos(){ return (api().C && api().C.huecos) || []; }
-function estancias(){ return (api().INT && api().INT.estancias) || []; }
-function muebles(){ return (api().INT && api().INT.muebles) || []; }
-function contorno(){ return (api().C && api().C.contorno) || []; }
+/* El coordinator puede pasar la casa entera (AD.api.C = CASA) o solo su parte
+   de construcción (AD.api.C = CASA.casa). Se normaliza aquí para no leer
+   muros de un undefined y no quedarse con la planta de la versión equivocada. */
+function casaDatos(){
+  var C = api().C;
+  if(C && !C.muros && C.casa && C.casa.muros) return C.casa;
+  return C || {};
+}
+function intDatos(){
+  var I = api().INT;
+  if(I && I.estancias) return I;
+  /* si el coordinator no pasa el interior, se saca de la casa */
+  var C = casaDatos();
+  if(C.interior && C.interior.estancias) return C.interior;
+  return I || {};
+}
+function muros(){ return casaDatos().muros || []; }
+function huecos(){ return casaDatos().huecos || []; }
+function estancias(){ return intDatos().estancias || []; }
+function muebles(){ return intDatos().muebles || []; }
+function contorno(){ return casaDatos().contorno || []; }
 
 function d2r(d){ return d*Math.PI/180; }
 function r2d(r){ return r*180/Math.PI; }
@@ -82,13 +102,13 @@ function r2d(r){ return r*180/Math.PI; }
 function aMundo(u, v){
   var a = api();
   if(a.aMundo) return a.aMundo(u, v);
-  var C = a.C || {origen:[0,0]}, o = C.origen || [0,0], g = a.GIRO || 0;
+  var C = casaDatos(), o = C.origen || [0,0], g = a.GIRO || 0;
   return [o[0] + u*Math.cos(g) + v*Math.sin(g), o[1] - u*Math.sin(g) + v*Math.cos(g)];
 }
 /* Mundo -> marco del plano (la inversa exacta de aMundo). */
 function uvDe(x, z){
   var a = api();
-  var C = a.C || {origen:[0,0]}, o = C.origen || [0,0], g = a.GIRO || 0;
+  var C = casaDatos(), o = C.origen || [0,0], g = a.GIRO || 0;
   var dx = x - o[0], dz = z - o[1];
   return [dx*Math.cos(g) - dz*Math.sin(g), dx*Math.sin(g) + dz*Math.cos(g)];
 }
@@ -180,6 +200,22 @@ function esc(s){
   return String(s === undefined || s === null ? '' : s)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+/* Reparte un texto en líneas que caben en maxW, con el tamaño dado.
+   Devuelve null si alguna palabra no cabe ni sola.
+   Sin esto, «DORMITORIO PRINCIPAL» en un cuarto de 4,3 m obligaba a
+   encoger la letra hasta hacerla ilegible en el móvil. */
+function envuelve(txt, tam, maxW){
+  var palabras = String(txt).split(' '), lineas = [], act = '', i;
+  for(i=0;i<palabras.length;i++){
+    var p = palabras[i];
+    if(!act){ act = p; continue; }
+    if((act + ' ' + p).length*tam*0.62 <= maxW){ act += ' ' + p; continue; }
+    lineas.push(act); act = p;
+  }
+  if(act) lineas.push(act);
+  for(i=0;i<lineas.length;i++) if(lineas[i].length*tam*0.62 > maxW) return null;
+  return lineas;
+}
 function cajaPlano(){
   var u0=Infinity, u1=-Infinity, v0=Infinity, v1=-Infinity, i, k;
   var ms = muros();
@@ -202,6 +238,13 @@ function dibujaSVG(){
   var W = (b.u1-b.u0 + 2*M)*s, H = (b.v1-b.v0 + 2*M)*s;
   function X(u){ return (u - b.u0 + M)*s; }
   function Y(v){ return (v - b.v0 + M)*s; }
+  /* El SVG se dibuja a ancho completo del panel, así que en un móvil todo se
+     encoge. Los textos se calculan para que en PANTALLA midan al menos
+     PX_PANTALLA px: se mide el factor de escala del viewBox y se invierte.
+     Sin esto, en un móvil de 390 px el nombre de un ambiente mide 5 px. */
+  var anchoPanel = Math.min(430, (window.innerWidth||390) - 24) - 24;
+  var esc2 = Math.max(0.05, anchoPanel/Math.max(1, W));
+  function fp(px){ return px/esc2; }
   var o = [];
   o.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W.toFixed(1)+' '+H.toFixed(1)+
          '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Plano de la planta">');
@@ -264,30 +307,34 @@ function dibujaSVG(){
   });
 
   /* --- nombre y medidas de cada ambiente --- */
-  function ajusta(txt, maxW, tam){
-    var t = tam;
-    /* 0,70 por carácter: el texto real sale un poco más ancho que el medido */
-    while(t > 7 && txt.length*t*0.70 > maxW) t -= 0.5;
-    return t;
-  }
   es.forEach(function(e){
     var k = e.caja, cx = X((k[0]+k[2])/2), cy = Y((k[1]+k[3])/2);
     var anchoPx = (k[2]-k[0])*s, altoPx = (k[3]-k[1])*s;
     var nombre = (e.nombre || e.id).toUpperCase();
     var dims = num(k[2]-k[0],2)+' × '+num(k[3]-k[1],2)+' m · '+num(superficie(e),1)+' m²';
     /* un ambiente estrecho y largo (un pasillo) lleva la etiqueta de pie */
-    var dePie = altoPx > anchoPx*1.5 && anchoPx < 170;
-    var maxW = (dePie ? altoPx : anchoPx) - 16;
-    var t1 = ajusta(nombre, maxW, 12.5), t2 = ajusta(dims, maxW, 10.5);
+    var dePie = altoPx > anchoPx*1.5 && anchoPx < 170*esc2*2;
+    var maxW = (dePie ? altoPx : anchoPx)*1.35;
+    /* El nombre se reparte en varias líneas antes de encoger la letra: en un
+       móvil, un rótulo de 5 px no sirve de nada. */
+    var t1 = fp(12.5), lineas = envuelve(nombre, t1, maxW), suelo = fp(8);
+    while(!lineas && t1 > suelo){ t1 -= 0.5; lineas = envuelve(nombre, t1, maxW); }
+    if(!lineas) lineas = [e.codigo || nombre];
+    var t2 = fp(10.5);
+    if(dims.length*t2*0.62 > maxW) t2 = Math.max(suelo, t1*0.6);
     o.push('<g'+(dePie ? ' transform="rotate(-90 '+cx.toFixed(1)+' '+cy.toFixed(1)+')"' : '')+'>');
-    o.push('<text x="'+cx.toFixed(1)+'" y="'+(cy-12).toFixed(1)+'" text-anchor="middle" fill="'+COL.texto+
-           '" font-family="IBM Plex Sans Condensed, system-ui, sans-serif" font-size="'+t1.toFixed(1)+'" font-weight="600" letter-spacing=".04em">'+
-           esc(nombre)+'</text>');
+    var altoLinea = t1*1.18;
+    var y0 = cy - 12 - (lineas.length-1)*altoLinea/2;
+    lineas.forEach(function(ln, i){
+      o.push('<text x="'+cx.toFixed(1)+'" y="'+(y0 + i*altoLinea).toFixed(1)+'" text-anchor="middle" fill="'+COL.texto+
+             '" font-family="IBM Plex Sans Condensed, system-ui, sans-serif" font-size="'+t1.toFixed(1)+'" font-weight="600" letter-spacing=".04em">'+
+             esc(ln)+'</text>');
+    });
     o.push('<text x="'+cx.toFixed(1)+'" y="'+(cy+3).toFixed(1)+'" text-anchor="middle" fill="'+COL.tenue+
            '" font-family="IBM Plex Mono, monospace" font-size="'+t2.toFixed(1)+'">'+esc(dims)+'</text>');
     if(e.codigo){
       o.push('<text x="'+cx.toFixed(1)+'" y="'+(cy+17).toFixed(1)+'" text-anchor="middle" fill="'+
-             COL.muro+'" opacity=".65" font-family="IBM Plex Mono, monospace" font-size="9.5">'+esc(e.codigo)+'</text>');
+             COL.muro+'" opacity=".8" font-family="IBM Plex Mono, monospace" font-size="'+fp(10).toFixed(1)+'">'+esc(e.codigo)+'</text>');
     }
     o.push('</g>');
   });
@@ -303,16 +350,16 @@ function dibujaSVG(){
   o.push('<line x1="'+(cxC-5).toFixed(1)+'" y1="'+Y(b.v1).toFixed(1)+'" x2="'+(cxC+5).toFixed(1)+'" y2="'+Y(b.v1).toFixed(1)+'"/>');
   o.push('</g>');
   o.push('<text x="'+((X(b.u0)+X(b.u1))/2).toFixed(1)+'" y="'+(cyC-7).toFixed(1)+'" text-anchor="middle" fill="'+COL.tenue+
-         '" font-family="IBM Plex Mono, monospace" font-size="11">'+num(b.u1-b.u0,2)+' m</text>');
+         '" font-family="IBM Plex Mono, monospace" font-size="'+fp(10.5).toFixed(1)+'">'+num(b.u1-b.u0,2)+' m</text>');
   o.push('<text x="'+(cxC-7).toFixed(1)+'" y="'+((Y(b.v0)+Y(b.v1))/2).toFixed(1)+'" text-anchor="middle" fill="'+COL.tenue+
-         '" font-family="IBM Plex Mono, monospace" font-size="11" transform="rotate(-90 '+(cxC-7).toFixed(1)+' '+((Y(b.v0)+Y(b.v1))/2).toFixed(1)+')">'+
+         '" font-family="IBM Plex Mono, monospace" font-size="'+fp(10.5).toFixed(1)+'" transform="rotate(-90 '+(cxC-7).toFixed(1)+' '+((Y(b.v0)+Y(b.v1))/2).toFixed(1)+')">'+
          num(b.v1-b.v0,2)+' m</text>');
 
   /* --- norte y escala --- */
   var nx = X(b.u0) - M*s*0.45, ny = Y(b.v0) - M*s*0.45;
   o.push('<g transform="translate('+nx.toFixed(1)+','+ny.toFixed(1)+')" fill="'+COL.texto+'">');
   o.push('<path d="M 0 10 L -7 -6 L 0 -2 L 7 -6 Z"/>');
-  o.push('<text x="0" y="24" text-anchor="middle" font-family="IBM Plex Sans Condensed, sans-serif" font-size="12" font-weight="700">N</text>');
+  o.push('<text x="0" y="24" text-anchor="middle" font-family="IBM Plex Sans Condensed, sans-serif" font-size="'+fp(13).toFixed(1)+'" font-weight="700">N</text>');
   o.push('</g>');
   var ex0 = X(b.u1) - 3*s, ey0 = Y(b.v1) + M*s*0.3;
   o.push('<g stroke="'+COL.texto+'" stroke-width="1.6"><line x1="'+ex0.toFixed(1)+'" y1="'+ey0.toFixed(1)+
@@ -320,7 +367,7 @@ function dibujaSVG(){
          '<line x1="'+ex0.toFixed(1)+'" y1="'+(ey0-4).toFixed(1)+'" x2="'+ex0.toFixed(1)+'" y2="'+(ey0+4).toFixed(1)+'"/>'+
          '<line x1="'+(ex0+s).toFixed(1)+'" y1="'+(ey0-4).toFixed(1)+'" x2="'+(ex0+s).toFixed(1)+'" y2="'+(ey0+4).toFixed(1)+'"/></g>');
   o.push('<text x="'+(ex0+s+6).toFixed(1)+'" y="'+(ey0+4).toFixed(1)+'" fill="'+COL.texto+
-         '" font-family="IBM Plex Mono, monospace" font-size="11">1 m</text>');
+         '" font-family="IBM Plex Mono, monospace" font-size="'+fp(10.5).toFixed(1)+'">1 m</text>');
 
   /* --- capa de códigos (interruptor) --- */
   if(EST.codigos){
@@ -329,14 +376,14 @@ function dibujaSVG(){
       if(L < 0.5) return;
       nM++;
       o.push('<text x="'+X((w[0]+w[2])/2).toFixed(1)+'" y="'+(Y((w[1]+w[3])/2)+3.5).toFixed(1)+
-             '" text-anchor="middle" fill="#0d1114" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="700">'+
+             '" text-anchor="middle" fill="#0d1114" font-family="IBM Plex Mono, monospace" font-size="'+fp(10).toFixed(1)+'" font-weight="700">'+
              'M-'+('0'+nM).slice(-2)+'</text>');
     });
     mbs.forEach(function(m){
       if(!m.uv) return;
       nF++;
       o.push('<text x="'+X(m.uv[0]).toFixed(1)+'" y="'+(Y(m.uv[1])+3.5).toFixed(1)+
-             '" text-anchor="middle" fill="#0d1114" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="700">'+
+             '" text-anchor="middle" fill="#0d1114" font-family="IBM Plex Mono, monospace" font-size="'+fp(10).toFixed(1)+'" font-weight="700">'+
              'F-'+('0'+nF).slice(-2)+'</text>');
     });
     hs.forEach(function(h){
@@ -344,7 +391,7 @@ function dibujaSVG(){
       if(!(d.esPuerta || d.esPaso)) return;
       nP++;
       o.push('<text x="'+X(d.centroU).toFixed(1)+'" y="'+(Y(d.centroV)+3.5).toFixed(1)+
-             '" text-anchor="middle" fill="#0d1114" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="700">'+
+             '" text-anchor="middle" fill="#0d1114" font-family="IBM Plex Mono, monospace" font-size="'+fp(10).toFixed(1)+'" font-weight="700">'+
              'P-'+('0'+nP).slice(-2)+'</text>');
     });
   }
@@ -366,11 +413,14 @@ function dibujaSVG(){
 function creaLienzo(){
   var b = cajaPlano(), M = MARGEN;
   var anchoM = b.u1-b.u0 + 2*M, fondoM = b.v1-b.v0 + 2*M;
-  var pxm = Math.min(62, 1400/anchoM);
+  /* La textura se limita a TEX_MAX px de lado mayor: 1400×1100 son 6 MB de VRAM
+     solo para las etiquetas, y en un teléfono eso duele. */
+  var pxm = Math.min(56, TEX_MAX/anchoM);
   var W = Math.max(256, Math.round(anchoM*pxm)), H = Math.max(256, Math.round(fondoM*pxm));
   var cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
-  EST.lienzo = cv; EST.ctx = cv.getContext('2d');
+  EST.lienzo = cv;
+  try{ EST.ctx = cv.getContext('2d'); }catch(e){ EST.ctx = null; }
   EST.cajaAnot = {b:b, M:M, pxm:pxm, anchoM:anchoM, fondoM:fondoM};
   return cv;
 }
@@ -400,7 +450,7 @@ function pintaAnotacion(){
   function pill(lineas, px, pz, fondo, borde, color){
     var padX = 9, padY = 6, w = 0, h = padY*2, i;
     for(i=0; i<lineas.length; i++){
-      g.font = (lineas[i].peso || 700) + ' ' + Math.round(lineas[i].tam) + 'px ' + FUENTE;
+      g.font = (lineas[i].peso || 700) + ' ' + Math.round(lineas[i].tam) + 'px ' + (lineas[i].mono ? MONO : FUENTE);
       /* el ancho medido se multiplica por 1,12: si la fuente no está cargada el
          texto sale algo más ancho que lo medido y se salía de la píldora */
       w = Math.max(w, g.measureText(lineas[i].t).width*1.12);
@@ -416,7 +466,7 @@ function pintaAnotacion(){
     var ty = y + padY;
     g.textAlign = 'center'; g.textBaseline = 'top';
     for(i=0; i<lineas.length; i++){
-      g.font = (lineas[i].peso || 700) + ' ' + Math.round(lineas[i].tam) + 'px ' + FUENTE;
+      g.font = (lineas[i].peso || 700) + ' ' + Math.round(lineas[i].tam) + 'px ' + (lineas[i].mono ? MONO : FUENTE);
       g.fillStyle = lineas[i].color || '#1d241c';
       g.fillText(lineas[i].t, px, ty);
       ty += lineas[i].tam*1.12 + 1;
@@ -429,66 +479,84 @@ function pintaAnotacion(){
     var nombre = (e.nombre || e.id).toUpperCase();
     var dims = num(k[2]-k[0],2)+' × '+num(k[3]-k[1],2)+' m';
     var m2 = num(superficie(e),1)+' m²';
-    /* el texto se ajusta al ambiente: si no cabe, se encoge (y si no cabe,
-       no se escribe: mejor un ambiente sin nombre que un nombre encima del vecino) */
-    var maxW = Math.min(anchoPx - 14, 3.4*altoPx);
+    /* El alto del rótulo se mide en METROS del plano, no en píxeles de la
+       textura: a 16 px/m en un móvil, un texto de 34 px de textura mide 5 px
+       de pantalla y no se lee. El nombre ocupa de 0,45 a 1,05 m de alto según
+       lo grande que sea el ambiente. */
+    var altoM = Math.max(0.45, Math.min(1.05, (k[2]-k[0])*0.24));
+    var t1 = Math.round(altoM*pxm);
+    var maxW = Math.min((k[2]-k[0])*1.45*pxm, 6.5*pxm);
     if(maxW < 46 || altoPx < 44) return;
-    function encaja(txt, tam){
-      /* 0,70 por carácter: el ancho real sale un 12 % más que el medido */
-      while(tam > 10 && txt.length*tam*0.70 > maxW) tam -= 1;
-      return tam;
-    }
-    var t1 = encaja(nombre, Math.round(Math.min(34, (altoPx-16)*0.42)));
-    if(t1 < 12) return;
-    var t2 = encaja(dims, Math.max(13, t1*0.50));
-    var t3 = encaja(m2, Math.max(12, t1*0.44));
-    pill([{t:nombre, tam:t1, peso:800},
-          {t:dims, tam:t2, peso:600, color:'#4a5347'},
-          {t:m2, tam:t3, peso:700, color:'#6a7366'}],
-         px, pz, 'rgba(250,248,240,.88)', 'rgba(45,55,46,.20)');
+    /* El nombre se reparte en varias líneas antes de encoger la letra: en un
+       móvil, 5 px de texto no dicen nada. */
+    var lineas = envuelve(nombre, t1, maxW);
+    var suelo = Math.round(0.45*pxm);
+    while(!lineas && t1 > suelo){ t1 -= 1; lineas = envuelve(nombre, t1, maxW); }
+    if(!lineas) lineas = envuelve(e.codigo || nombre, t1, maxW) || [e.codigo || nombre];
+    var t2 = Math.max(12, Math.round(t1*0.52));
+    var t3 = Math.max(11, Math.round(t1*0.47));
+    if(dims.length*t2*0.62 > maxW) t2 = Math.max(10, Math.round(t1*0.36));
+    if(m2.length*t3*0.62 > maxW) t3 = Math.max(9, Math.round(t1*0.32));
+    var items = [];
+    lineas.forEach(function(ln){ items.push({t:ln, tam:t1, peso:800}); });
+    items.push({t:dims, tam:t2, peso:600, color:'#414a3f'});
+    items.push({t:m2, tam:t3, peso:700, color:'#67705f'});
+    if(e.codigo) items.push({t:e.codigo, tam:Math.max(11, Math.round(t1*0.40)), peso:800, color:'#5d7a1f', mono:true});
+    /* si la píldora no cabe en el ambiente, se quitan las líneas de debajo */
+    var altoTotal = 0;
+    items.forEach(function(it){ altoTotal += it.tam*1.12 + 1; });
+    if(altoTotal > altoPx*0.92 && items.length > lineas.length + 1) items.length = lineas.length + 1;
+    pill(items, px, pz, 'rgba(250,248,240,.93)', 'rgba(45,55,46,.24)');
   });
 
-  /* norte y escala */
+  /* norte y escala: medidos en METROS del plano, no en píxeles de la textura,
+     para que se lean igual de bien que los rótulos de los ambientes */
   var nx = X(b.u0-M+0.8), ny = Y(b.v0-M+0.8);
   g.save();
   g.translate(nx, ny);
   g.fillStyle = 'rgba(235,240,235,.92)';
-  g.beginPath(); g.moveTo(0, 34); g.lineTo(-11, 56); g.lineTo(0, 48); g.lineTo(11, 56); g.closePath(); g.fill();
-  g.font = '800 22px ' + FUENTE; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
-  g.fillStyle = 'rgba(235,240,235,.92)'; g.fillText('N', 0, 22);
+  g.beginPath();
+  g.moveTo(0, -0.48*pxm); g.lineTo(-0.17*pxm, -0.05*pxm);
+  g.lineTo(0, -0.16*pxm); g.lineTo(0.17*pxm, -0.05*pxm);
+  g.closePath(); g.fill();
+  g.font = '800 ' + Math.round(0.44*pxm) + 'px ' + FUENTE;
+  g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+  g.fillStyle = 'rgba(235,240,235,.92)'; g.fillText('N', 0, -0.54*pxm);
   g.restore();
   var barY = Y(b.v0-M+2.3);
-  g.strokeStyle = 'rgba(235,240,235,.9)'; g.lineWidth = 3;
+  g.strokeStyle = 'rgba(235,240,235,.9)'; g.lineWidth = Math.max(2, 0.035*pxm);
   g.beginPath();
   g.moveTo(X(b.u0-M+1.4), barY); g.lineTo(X(b.u0-M+2.4), barY);
-  g.moveTo(X(b.u0-M+1.4), barY-6); g.lineTo(X(b.u0-M+1.4), barY+6);
-  g.moveTo(X(b.u0-M+2.4), barY-6); g.lineTo(X(b.u0-M+2.4), barY+6);
+  g.moveTo(X(b.u0-M+1.4), barY-0.10*pxm); g.lineTo(X(b.u0-M+1.4), barY+0.10*pxm);
+  g.moveTo(X(b.u0-M+2.4), barY-0.10*pxm); g.lineTo(X(b.u0-M+2.4), barY+0.10*pxm);
   g.stroke();
-  g.font = '700 15px ' + MONO; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
-  g.fillStyle = 'rgba(235,240,235,.9)'; g.fillText('1 m', X(b.u0-M+2.55), barY+5);
+  g.font = '700 ' + Math.round(0.30*pxm) + 'px ' + MONO; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  g.fillStyle = 'rgba(235,240,235,.9)'; g.fillText('1 m', X(b.u0-M+2.55), barY+0.12*pxm);
 
-  /* códigos */
+  /* códigos: la altura se mide en metros del plano (0,5 m) para que se lean
+     cuando se acerca la cámara */
   if(EST.codigos){
     var nM = 0, nF = 0, nP = 0;
+    var tamCod = Math.round(0.50*pxm);
     ms.forEach(function(w){
       var L = Math.hypot(w[2]-w[0], w[3]-w[1]);
       if(L < 0.5) return;
       nM++;
-      pill([{t:'M-'+('0'+nM).slice(-2), tam:19, peso:800, color:'#f7f4e8'}],
-           X((w[0]+w[2])/2), Y((w[1]+w[3])/2), 'rgba(31,38,31,.88)');
+      pill([{t:'M-'+('0'+nM).slice(-2), tam:tamCod, peso:800, color:'#f7f4e8', mono:true}],
+           X((w[0]+w[2])/2), Y((w[1]+w[3])/2), 'rgba(31,38,31,.90)');
     });
     mbs.forEach(function(m){
       if(!m.uv) return;
       nF++;
-      pill([{t:'F-'+('0'+nF).slice(-2), tam:18, peso:800, color:'#241d05'}],
-           X(m.uv[0]), Y(m.uv[1]), 'rgba(246,198,74,.94)');
+      pill([{t:'F-'+('0'+nF).slice(-2), tam:tamCod, peso:800, color:'#241d05', mono:true}],
+           X(m.uv[0]), Y(m.uv[1]), 'rgba(246,198,74,.96)');
     });
     hs.forEach(function(h){
       var d = datosHueco(h);
       if(!(d.esPuerta || d.esPaso)) return;
       nP++;
-      pill([{t:'P-'+('0'+nP).slice(-2), tam:18, peso:800, color:'#241d05'}],
-           X(d.centroU), Y(d.centroV), 'rgba(255,255,255,.92)', 'rgba(45,55,46,.28)');
+      pill([{t:'P-'+('0'+nP).slice(-2), tam:tamCod, peso:800, color:'#241d05', mono:true}],
+           X(d.centroU), Y(d.centroV), 'rgba(255,255,255,.94)', 'rgba(45,55,46,.28)');
     });
   }
   if(EST.tex) EST.tex.needsUpdate = true;
@@ -500,19 +568,55 @@ function pintaAnotacion(){
 function materialPlano(color){
   return new THREE.MeshLambertMaterial({color:color});
 }
+/* Todas las cajas del corte se fusionan en una sola geometría por material.
+   En un móvil, 100 mallas son 100 draw calls (y 100 cambios de estado); con
+   cinco, son cinco. La construcción pasa de ~100 mallas a 5 sin tocar los datos. */
+function fusionCajas(partes){
+  var pos = [], nrm = [], i, j;
+  var v = new THREE.Vector3(), q = new THREE.Quaternion(), m = new THREE.Matrix4();
+  var eje = new THREE.Vector3(0,1,0), uno = new THREE.Vector3(1,1,1);
+  for(i=0; i<partes.length; i++){
+    var p = partes[i];
+    var b0 = new THREE.BoxGeometry(p.s[0], p.s[1], p.s[2]);
+    var bg = b0.toNonIndexed();
+    b0.dispose();
+    if(p.r){
+      q.setFromAxisAngle(eje, p.r);
+      m.compose(new THREE.Vector3(p.c[0], p.c[1], p.c[2]), q, uno);
+      bg.applyMatrix4(m);
+    } else {
+      bg.translate(p.c[0], p.c[1], p.c[2]);
+    }
+    var pa = bg.attributes.position.array, na = bg.attributes.normal.array;
+    for(j=0; j<pa.length; j++){ pos.push(pa[j]); nrm.push(na[j]); }
+    bg.dispose();
+  }
+  var g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  return g;
+}
+/* Un punto (px,pz) del marco de un sub-grupo, dentro del grupo del plano:
+   el sub-grupo gira -a y se apoya en (ox,oz). */
+function aGrupo(px, pz, ox, oz, a){
+  return [ox + px*Math.cos(a) - pz*Math.sin(a), oz + px*Math.sin(a) + pz*Math.cos(a)];
+}
+
 function construyePlan3D(){
   if(EST.gPlan) return EST.gPlan;
   if(typeof THREE === 'undefined') return null;
+  var a = api();
+  if(!a.escena) return null;
   var g = new THREE.Group();
-  var C = api().C || {origen:[0,0]}, o = C.origen || [0,0], suelo = api().SUELO || 0;
+  var C = casaDatos(), o = C.origen || [0,0], suelo = a.SUELO || 0;
   g.position.set(o[0], suelo, o[1]);
-  g.rotation.y = api().GIRO || 0;
+  g.rotation.y = a.GIRO || 0;
   g.visible = false;
-  api().escena.add(g);
+  a.escena.add(g);
   EST.gPlan = g;
 
-  var cota = (api().C && api().C.cotaSuelo) || 0;      // el piso terminado está a esta altura
-  var corte = cota + CORTE;                            // el corte, 1,15 m sobre el piso
+  var cota = C.cotaSuelo || 0;         // el piso terminado está a esta altura
+  var corte = cota + CORTE;            // el corte, 1,15 m sobre el piso terminado
   EST.corte = corte;
 
   var matMuro = materialPlano('#d6d2c4');               // neutro de planta: el color es para el 3D
@@ -521,79 +625,72 @@ function construyePlan3D(){
   var matPuerta = new THREE.MeshBasicMaterial({color:COL.puerta, toneMapped:false});
   var matPaso = new THREE.MeshBasicMaterial({color:'#9fb0b6', toneMapped:false});
 
-  function muro(grupo, x0, x1, e, y0, y1){
-    var L = x1 - x0, cx = (x0+x1)/2, cy = (y0+y1)/2;
-    var m = new THREE.Mesh(new THREE.BoxGeometry(L, y1-y0, e), matMuro);
-    m.position.set(cx, cy, 0);
-    grupo.add(m);
-    return m;
-  }
-  function poche(grupo, x0, x1, e, y){
-    var L = x1 - x0, cx = (x0+x1)/2;
-    var m = new THREE.Mesh(new THREE.BoxGeometry(L+0.004, GROSOR_PANEL, e+0.004), matPoche);
-    m.position.set(cx, y, 0);
-    grupo.add(m);
-    return m;
-  }
+  var pMuros = [], pPoche = [], pVenta = [], pPuerta = [], pPaso = [];
 
   /* --- los muros, cortados a 1,15 m, con su poché --- */
   muros().forEach(function(w){
     var e = w[4] || 0.12;
     var L = Math.hypot(w[2]-w[0], w[3]-w[1]);
-    var a = Math.atan2(w[3]-w[1], w[2]-w[0]);
-    var gr = new THREE.Group();
-    gr.position.set(w[0], 0, w[1]);
-    gr.rotation.y = -a;
-    g.add(gr);
+    var ang = Math.atan2(w[3]-w[1], w[2]-w[0]);          // la dirección del muro en (u,v)
+    var ux = Math.cos(ang), uz = Math.sin(ang);
     /* se alarga e/2 en las puntas para cerrar las esquinas, salvo donde empieza un hueco */
     var x0 = bordeHueco(w[0], w[1]) ? 0 : -e/2;
     var x1 = bordeHueco(w[2], w[3]) ? L : L + e/2;
-    muro(gr, x0, x1, e, 0, corte);
-    poche(gr, x0, x1, e, corte + GROSOR_PANEL/2 + 0.012);
+    var cx = (x0+x1)/2, largo = x1-x0;
+    var cen = aGrupo(cx, 0, w[0], w[1], ang);
+    var r = -ang;
+    pMuros.push({c:[cen[0], corte/2, cen[1]], s:[largo, corte, e], r:r});
+    pPoche.push({c:[cen[0], corte + GROSOR_PANEL/2 + 0.012, cen[1]],
+                 s:[largo+0.004, GROSOR_PANEL, e+0.004], r:r});
   });
 
   /* --- los huecos: el alféizar queda como muro, la ventana se dibuja en el corte --- */
   huecos().forEach(function(h){
     var d = datosHueco(h);
-    var L = d.L, e = d.e || 0.12;
-    var a = d.a;
-    var gr = new THREE.Group();
-    gr.position.set(d.u0, 0, d.v0);
-    gr.rotation.y = -a;
-    g.add(gr);
+    var L = d.L, e = d.e || 0.12, ang = d.a, r = -ang;
+    var cen = aGrupo(L/2, 0, d.u0, d.v0, ang);
     if(d.y0 >= corte){
       /* el hueco está entero por encima del corte: ahí el muro está entero */
-      muro(gr, 0, L, e, 0, corte);
-      poche(gr, 0, L, e, corte + GROSOR_PANEL/2 + 0.012);
+      pMuros.push({c:[cen[0], corte/2, cen[1]], s:[L, corte, e], r:r});
+      pPoche.push({c:[cen[0], corte + GROSOR_PANEL/2 + 0.012, cen[1]], s:[L+0.004, GROSOR_PANEL, e+0.004], r:r});
       return;
     }
     if(d.y0 > 0){
       /* el peldaño del alféizar, de suelo a alféizar */
-      muro(gr, 0, L, e, 0, d.y0);
+      pMuros.push({c:[cen[0], d.y0/2, cen[1]], s:[L, d.y0, e], r:r});
     }
     if(d.esPuerta || d.esPaso){
       /* umbral: una raya en el corte, del color de la puerta */
-      var m = new THREE.Mesh(new THREE.BoxGeometry(L, 0.03, Math.max(0.05, e*0.45)), d.esPaso ? matPaso : matPuerta);
-      m.position.set(L/2, corte, 0);
-      gr.add(m);
+      var c2 = aGrupo(L/2, 0, d.u0, d.v0, ang);
+      (d.esPaso ? pPaso : pPuerta).push({c:[c2[0], corte, c2[1]], s:[L, 0.03, Math.max(0.05, e*0.45)], r:r});
       if(d.esPuerta){
         /* la hoja, tumbada en el suelo, en la posición en que la deja el 3D */
-        var hoja = new THREE.Mesh(new THREE.BoxGeometry(d.L, 0.025, 0.05), matPuerta);
-        hoja.rotation.y = Math.atan2(-d.lz, d.lx);
-        hoja.position.set(d.bisX + d.lx/2, 0.02, d.off + d.lz/2);
-        gr.add(hoja);
+        var cl = aGrupo(d.bisX + d.lx/2, d.off + d.lz/2, d.u0, d.v0, ang);
+        pPuerta.push({c:[cl[0], cota + 0.014, cl[1]], s:[d.L, 0.028, 0.05], r:r + Math.atan2(-d.lz, d.lx)});
       }
     } else {
       /* vidrio: una raya fina en la altura del corte */
-      var v = new THREE.Mesh(new THREE.BoxGeometry(L, 0.035, Math.max(0.05, e*0.4)), matVenta);
-      v.position.set(L/2, corte, 0);
-      gr.add(v);
+      pVenta.push({c:[cen[0], corte, cen[1]], s:[L, 0.035, Math.max(0.05, e*0.4)], r:r});
     }
   });
 
+  function malla(partes, mat, orden){
+    if(!partes.length) return null;
+    var m = new THREE.Mesh(fusionCajas(partes), mat);
+    m.renderOrder = orden || 0;
+    m.frustumCulled = false;
+    g.add(m);
+    return m;
+  }
+  malla(pMuros, matMuro, 1);
+  malla(pPoche, matPoche, 2);
+  malla(pVenta, matVenta, 3);
+  malla(pPuerta, matPuerta, 3);
+  malla(pPaso, matPaso, 3);
+
   /* --- la capa de anotación: un plano horizontal con la textura de canvas --- */
   creaLienzo();
-  pintaAnotacion();
+  if(EST.ctx) pintaAnotacion();
   var t = new THREE.CanvasTexture(EST.lienzo);
   if('encoding' in t) t.encoding = THREE.sRGBEncoding;
   else if('colorSpace' in t && THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
@@ -617,18 +714,25 @@ function construyePlan3D(){
    6 · Modo planta: qué se oculta y qué se restaura
    ===================================================================================== */
 function cortaPorEncima(){
-  /* Se oculta todo lo que asoma por encima del corte:_tabiques, revestimientos, luminarias
-     y el mobiliario alto. Se guarda lo que había para devolverlo al salir. */
+  /* Se oculta todo lo que asoma por encima del corte: tabiques, revestimientos,
+     luminarias y el mobiliario alto. Se guarda lo que había para devolverlo al
+     salir. Las cajas se sacan de la geometría (no de setFromObject, que
+     recorre todo el subárbol por cada malla: con 500 mallas son 250 000 pasos
+     y en un móvil se nota). */
   var yCorte = (api().SUELO || 0) + (EST.corte || CORTE);
   var capas = api().capas || {};
-  var guardados = [], caja = new THREE.Box3(), v = new THREE.Vector3();
+  var guardados = [], caja = new THREE.Box3();
   ['muros','interior'].forEach(function(nombre){
     var capa = capas[nombre];
     if(!capa) return;
+    if(capa.updateWorldMatrix) capa.updateWorldMatrix(true, true);
     capa.traverse(function(o){
       if(!o.isMesh) return;
       if(!o.geometry) return;
-      caja.setFromObject(o);
+      var g = o.geometry;
+      if(!g.boundingBox) g.computeBoundingBox();
+      if(!g.boundingBox) return;
+      caja.copy(g.boundingBox).applyMatrix4(o.matrixWorld);
       if(!isFinite(caja.min.y)) return;
       if(caja.max.y > yCorte + 0.001){
         guardados.push([o, o.visible]);
@@ -643,6 +747,10 @@ function entraPlan3D(){
   if(EST.plan3D) return true;
   var a = api();
   if(!a.escena || !a.aplicaVista) return false;
+
+  /* El cine y la planta son excluyentes: los dos escriben la cámara cada
+     cuadro y se pisarían. Si el cine está puesto, se cierra. */
+  if(window.AD && AD.camaras && AD.camaras.cerrar && AD.camaras.estado && AD.camaras.estado().modo) AD.camaras.cerrar();
 
   /* Si se está paseando, la órbita y la cámara son del paseo: se sale del paseo antes. */
   if(a.pie && a.pie.activo){
@@ -679,14 +787,15 @@ function entraPlan3D(){
   g.visible = true;
   EST.plan3D = true;
 
-  /* la cámara, alta y con el norte arriba */
+  /* La cámara, casi vertical: con el corte a 1,15 m, mirar de lado hace que
+     cada tabique tape el ambiente de al lado (la lección del visor 390-1).
+     A 17° de caída, un muro de 1,27 m sólo tapa 0,39 m de suelo detrás. */
   var b = cajaPlano(), centro = aMundo((b.u0+b.u1)/2, (b.v0+b.v1)/2);
-  var tam = Math.max(b.u1-b.u0, b.v1-b.v0);
   EST.PL.x = centro[0]; EST.PL.z = centro[1];
-  EST.PL.dist = Math.max(12, tam*1.35);
   EST.PL.theta = a.GIRO || 0;              // con el norte hacia arriba
-  EST.PL.phi = 0.62;                      // 35° de caída
+  EST.PL.phi = 0.30;                       // 17° de caída
   EST.PL.fov = fovObjetivo();
+  EST.PL.dist = distanciaAjuste(EST.PL.phi, EST.PL.theta);
 
   muestraCapa3D();
   if(EST.btn) EST.btn.textContent = 'Salir del plano';
@@ -717,6 +826,8 @@ function salePlan3D(restauraCamara){
   if(EST.overlay) EST.overlay.hidden = true;
   if(EST.hud3d) EST.hud3d.hidden = true;
   if(EST.btn) EST.btn.textContent = 'Plano';
+  var b = document.body;
+  if(b && b.classList) b.classList.remove('adc-plano');
 }
 
 /* Estado actual de la órbita, deducido de la cámara (el visor no lo expone). */
@@ -737,13 +848,42 @@ function aplicaCamara(c){
   api().aplicaVista({d:c.d, t:c.t, p:c.p, c:c.c, fov:c.fov});
 }
 
-/* FOV: se pide en horizontal (70°) y se pasa a vertical con el aspecto del lienzo. */
-function fovObjetivo(){
+/* FOV: se pide en HORIZONTAL y se convierte a vertical (2·atan(tan(h/2)/aspect)),
+   con los límites 50–94° en los dos ejes. El visor guarda el vertical, así que
+   se le pasa el vertical ya convertido. Importante: en vertical (aspect 0,46)
+   el vertical se recorta a 94° y el horizontal real se queda en ~53°: la
+   distancia a la que se ve la planta entera se calcula con ese horizontal. */
+function fovs(){
   var a = api(), r = a.renderer && a.renderer.domElement;
-  var w = r ? (r.clientWidth || r.width) : 1, h = r ? (r.clientHeight || r.height) : 1;
+  var w = r ? (r.clientWidth || r.width || (window.innerWidth||390)) : (window.innerWidth||390);
+  var h = r ? (r.clientHeight || r.height || (window.innerHeight||844)) : (window.innerHeight||844);
   var asp = Math.max(0.2, w/Math.max(1, h));
-  var fv = r2d(2*Math.atan(Math.tan(d2r(70/2))/asp));
-  return Math.max(50, Math.min(94, fv));
+  var h0 = Math.max(FOV_MIN, Math.min(FOV_MAX, HFOV_OBJ));
+  var v = r2d(2*Math.atan(Math.tan(d2r(h0/2))/asp));
+  v = Math.max(FOV_MIN, Math.min(FOV_MAX, v));
+  var hef = r2d(2*Math.atan(Math.tan(d2r(v/2))*asp));      // el horizontal que queda tras el recorte
+  return {h:hef, v:v, asp:asp};
+}
+function fovObjetivo(){ return fovs().v; }
+
+/* Las medias longitudes del plano tal y como se ven en pantalla: el eje
+   horizontal de la cámara es (cosθ, −sinθ) en el marco del plano, así que con
+   el norte arriba (θ = GIRO) el ancho de pantalla es el ancho del plano. */
+function extents(theta){
+  var b = cajaPlano();
+  var W = b.u1-b.u0, D = b.v1-b.v0;
+  var d = theta - (api().GIRO || 0);
+  var c = Math.abs(Math.cos(d)), s = Math.abs(Math.sin(d));
+  return [(W*c + D*s)/2, (W*s + D*c)/2];
+}
+/* La distancia a la que la planta entra entera en la pantalla, con el FOV real
+   y la inclinación de la cámara: el fondo se escorza y ocupa cos(φ) de alto. */
+function distanciaAjuste(phi, theta){
+  var f = fovs(), ex = extents(theta);
+  var th = Math.max(0.05, Math.tan(d2r(f.h/2))), tv = Math.max(0.05, Math.tan(d2r(f.v/2)));
+  var esc = Math.max(0.15, Math.cos(phi));
+  var dU = ex[0]/th, dV = (ex[1]*esc)/tv;
+  return Math.max(9, Math.max(dU, dV)*1.12);
 }
 
 /* =====================================================================================
@@ -760,7 +900,7 @@ function puntoEnElPlano(clientX, clientY){
   rayo.setFromCamera(new THREE.Vector2(nx, ny), cam);
   var d = rayo.ray.direction;
   if(Math.abs(d.y) < 0.02) return null;
-  var cota = (api().C && api().C.cotaSuelo) || 0;
+  var cota = (casaDatos().cotaSuelo) || 0;
   var yPlan = (api().SUELO || 0) + cota + 0.075;
   var t = (yPlan - rayo.ray.origin.y)/d.y;
   if(t <= 0) return null;
@@ -773,16 +913,21 @@ function enganchaGestos(){
   var ov = EST.overlay;
   if(!ov) return;
   ov.addEventListener('pointerdown', function(e){
-    ov.setPointerCapture(e.pointerId);
+    try{ ov.setPointerCapture(e.pointerId); }catch(err){}
     EST.act.id = e.pointerId; EST.act.x = e.clientX; EST.act.y = e.clientY;
     EST.act.mx = e.clientX; EST.act.my = e.clientY; EST.act.mov = 0; EST.act.n = 1;
-    EST.act.pinza = 0;
+    EST.act.pinza = 0; EST.act.dmax = 0;
+    EST.act.t0 = (window.performance && performance.now) ? performance.now() : 0;
   });
   ov.addEventListener('pointermove', function(e){
     if(e.pointerId !== EST.act.id) return;
     var dx = e.clientX - EST.act.mx, dy = e.clientY - EST.act.my;
     EST.act.mov += Math.abs(dx) + Math.abs(dy);
     EST.act.mx = e.clientX; EST.act.my = e.clientY;
+    /* Distancia máxima al punto de partida: un toque es un toque aunque el
+       dedo tiemble, y una órbita es una órbita aunque el dedo vuelva atrás. */
+    var dm = Math.hypot(e.clientX - EST.act.x, e.clientY - EST.act.y);
+    if(dm > EST.act.dmax) EST.act.dmax = dm;
     if(e.pointerType === 'touch' && e.isPrimary === false){        // pinza con dos dedos
       EST.act.n = 2;
       var d = Math.hypot(e.clientX - EST.act.x, e.clientY - EST.act.y);
@@ -796,24 +941,29 @@ function enganchaGestos(){
   });
   function fin(e){
     if(e.pointerId !== EST.act.id) return;
-    if(EST.act.mov < 8){                                          // un toque: entrar en el ambiente
+    /* Un toque: un solo dedo, apenas movido (TOQUE_UMBRAL px) y que no duró
+       más de 0,7 s. Con el umbral pequeño, una órbita acababa entrando en un
+       ambiente; con el grande, tocar para entrar no respondía. */
+    var ahora = (window.performance && performance.now) ? performance.now() : 0;
+    var dur = EST.act.t0 ? (ahora - EST.act.t0) : 0;
+    if(EST.act.n === 1 && EST.act.dmax < TOQUE_UMBRAL && dur < 700){
       var q = puntoEnElPlano(e.clientX, e.clientY);
       if(q){
         var es = estanciaEn(q[0], q[1]);
         if(es) entraEstancia(es);
       }
     }
-    EST.act.id = null; EST.act.n = 0; EST.act.pinza = 0; EST.act.mov = 0;
+    EST.act.id = null; EST.act.n = 0; EST.act.pinza = 0; EST.act.mov = 0; EST.act.dmax = 0;
   }
   ov.addEventListener('pointerup', fin);
-  ov.addEventListener('pointercancel', function(){ EST.act.id = null; EST.act.n = 0; EST.act.pinza = 0; });
+  ov.addEventListener('pointercancel', function(){ EST.act.id = null; EST.act.n = 0; EST.act.pinza = 0; EST.act.dmax = 0; });
   ov.addEventListener('wheel', function(e){
     e.preventDefault();
     EST.PL.dist = acotaDist(EST.PL.dist * Math.pow(1.0013, e.deltaY));
   }, {passive:false});
 }
-function acotaDist(d){ return Math.max(8, Math.min(90, d)); }
-function acotaPhi(p){ return Math.max(0.18, Math.min(1.30, p)); }
+function acotaDist(d){ return Math.max(6, Math.min(90, d)); }
+function acotaPhi(p){ return Math.max(0.05, Math.min(1.05, p)); }
 
 /* =====================================================================================
    8 · Entrar en un ambiente
@@ -821,7 +971,8 @@ function acotaPhi(p){ return Math.max(0.18, Math.min(1.30, p)); }
 function vistaDeEstancia(e){
   var k = e.caja, w = k[2]-k[0], d = k[3]-k[1];
   var c = aMundo((k[0]+k[2])/2, (k[1]+k[3])/2);
-  return {d: Math.max(w, d)*1.5 + 7, t: 15, p: 20, c: c, sinTejado: true, fov: 42};
+  /* el FOV también se define en horizontal y se convierte a vertical */
+  return {d: Math.max(w, d)*1.5 + 7, t: 15, p: 20, c: c, sinTejado: true, fov: fovObjetivo()};
 }
 function entraEstancia(e){
   if(!e) return;
@@ -832,13 +983,14 @@ function entraEstancia(e){
   }
   if(EST.plan3D) salePlan3D(false);          // se sale del modo planta sin tocar la cámara
   cierraPanel();
+  /* Si el visor tiene una vista propia de esa estancia, se usa (son las vistas
+     escritas a mano, que son mejores que la que se puede calcular aquí). */
   var vista = null;
   if(a.VISTAS){
     for(var i=0; i<a.VISTAS.length; i++) if(a.VISTAS[i][1] === e.id){ vista = a.VISTAS[i]; break; }
   }
   if(vista && a.eligeVista) a.eligeVista(e.id);
   else if(a.aplicaVista) a.aplicaVista(vistaDeEstancia(e));
-  if(a.VISTAS) for(var j=0; j<a.VISTAS.length; j++) if(a.VISTAS[j][1] === e.id && a.eligeVista) a.eligeVista(e.id);
 }
 
 /* =====================================================================================
@@ -875,10 +1027,15 @@ function css(){
    '#plano-panel .pl-lista b{font-weight:600}'+
    '#plano-panel .pl-lista span{font-family:IBM Plex Mono,monospace;color:'+COL.tenue+';font-size:11.5px}'+
    '#plano-panel .pl-est{color:'+COL.muro+';font-family:IBM Plex Mono,monospace}'+
-   '#plano-btn{position:fixed;right:12px;top:92px;z-index:24;height:44px;min-width:44px;padding:0 14px;'+
+   '#plano-btn{position:fixed;right:12px;bottom:52px;z-index:26;height:44px;min-width:44px;padding:0 14px;'+
    'font:inherit;font-size:13px;font-weight:600;color:#eaf2f5;background:#16262d;border:1px solid #2a3d46;'+
    'border-radius:4px;box-shadow:0 4px 14px rgba(0,0,0,.45);cursor:pointer}'+
    '#plano-btn[aria-pressed="true"]{border-color:'+COL.muro+';color:'+COL.muro+'}'+
+   /* En modo planta se aparta el HUD del visor: su brújula y su escala estorban
+      (la planta trae las suyas) y el botón de cine no puede coexistir con
+      la planta: los dos escriben la cámara en cada cuadro. */
+   'body.adc-plano #brujula,body.adc-plano #escala,body.adc-plano #hud,body.adc-plano #etiquetas,'+
+   'body.adc-plano #ids,body.adc-plano #mira,body.adc-plano #adc-btn{display:none!important}'+
    '#plano-capa{position:fixed;inset:0;z-index:12;touch-action:none;background:transparent}'+
    '#plano-capa[hidden]{display:none!important}'+
    '#plano-hud3d{position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:26;display:flex;gap:8px;'+
@@ -893,7 +1050,7 @@ function css(){
    'border:1px solid #6b5220;border-radius:4px;padding:10px 14px;font-size:12.5px;max-width:min(90vw,420px)}'+
    '#plano-aviso[hidden]{display:none!important}'+
    '@media (max-width:860px){#plano-panel{left:0;right:0;top:auto;bottom:0;width:auto;max-height:78dvh;'+
-   'border-radius:8px 8px 0 0}#plano-btn{top:76px;right:12px}}';
+   'border-radius:8px 8px 0 0}#plano-btn{bottom:52px;right:12px}}';
   document.head.appendChild(st);
 }
 
@@ -935,24 +1092,30 @@ function creaPanel(){
   document.body.appendChild(p);
   EST.panel = p;
   EST.lista = p.querySelector('.pl-lista');
-  p.querySelector('.pl-x').addEventListener('click', function(){ cierraPanel(); });
-  p.querySelector('#plano-ver3d').addEventListener('click', function(){
+  /* Los botones se buscan con ?. : si el DOM no es el esperado, el módulo
+     sigue sirviendo el plano en vez de reventar la página. */
+  var bx = p.querySelector('.pl-x'); if(bx) bx.addEventListener('click', function(){ cierraPanel(); });
+  var b3 = p.querySelector('#plano-ver3d');
+  if(b3) b3.addEventListener('click', function(){
     cierraPanel();
     if(!entraPlan3D()) avisa('No se ha podido abrir el plano 3D.');
   });
   var bc = p.querySelector('#plano-cod');
-  bc.addEventListener('click', function(){ setCodigos(!EST.codigos); });
-  EST.btnCod = bc;
+  if(bc){
+    bc.addEventListener('click', function(){ setCodigos(!EST.codigos); });
+    EST.btnCod = bc;
+  }
   refrescaPlano();
 }
 
 function refrescaPlano(){
   if(!EST.panel) return;
   var cont = EST.panel.querySelector('.pl-mapa');
+  if(!cont) return;
   cont.innerHTML = dibujaSVG();
   var svg = cont.querySelector('svg');
   EST.svg = svg;
-  svg.addEventListener('click', function(ev){
+  if(svg) svg.addEventListener('click', function(ev){
     var t = ev.target;
     while(t && t !== svg && !(t.getAttribute && t.getAttribute('data-e'))) t = t.parentNode;
     if(!t || t === svg) return;
@@ -967,14 +1130,20 @@ function refrescaPlano(){
     html += '<button type="button" data-e="'+esc(e.id)+'"><b>'+esc(e.nombre || e.id)+'</b>'+
             '<span>'+num(k[2]-k[0],2)+'×'+num(k[3]-k[1],2)+' · '+num(superficie(e),1)+' m²</span></button>';
   });
+  if(!EST.lista) return;
   EST.lista.innerHTML = html;
-  EST.lista.addEventListener('click', function(ev){
-    var b = ev.target.closest ? ev.target.closest('button[data-e]') : null;
-    if(!b) return;
-    var e = null, l = estancias();
-    for(var i=0; i<l.length; i++) if(l[i].id === b.getAttribute('data-e')){ e = l[i]; break; }
-    if(e) entraEstancia(e);
-  });
+  /* El listener se pone UNA vez: si se añadiera en cada refresco, tocar un
+     ambiente entraría en él tantas veces como se hubiera refrescado el plano. */
+  if(!EST.listaOk){
+    EST.listaOk = true;
+    EST.lista.addEventListener('click', function(ev){
+      var b = ev.target.closest ? ev.target.closest('button[data-e]') : null;
+      if(!b) return;
+      var e = null, l = estancias();
+      for(var i=0; i<l.length; i++) if(l[i].id === b.getAttribute('data-e')){ e = l[i]; break; }
+      if(e) entraEstancia(e);
+    });
+  }
 }
 
 function creaBoton(){
@@ -1007,14 +1176,21 @@ function creaCapa3D(){
     '<button type="button" id="plano-h-salir">Salir</button>';
   document.body.appendChild(h);
   EST.hud3d = h;
-  h.querySelector('#plano-h-cod').addEventListener('click', function(){ setCodigos(!EST.codigos); });
-  h.querySelector('#plano-h-2d').addEventListener('click', function(){ salePlan3D(true); abrePanel(); });
-  h.querySelector('#plano-h-salir').addEventListener('click', function(){ salePlan3D(true); });
+  var hc = h.querySelector('#plano-h-cod');
+  if(hc) hc.addEventListener('click', function(){ setCodigos(!EST.codigos); });
+  var h2 = h.querySelector('#plano-h-2d');
+  if(h2) h2.addEventListener('click', function(){ salePlan3D(true); abrePanel(); });
+  var hs = h.querySelector('#plano-h-salir');
+  if(hs) hs.addEventListener('click', function(){ salePlan3D(true); });
 }
 function muestraCapa3D(){
   if(EST.overlay) EST.overlay.hidden = false;
   if(EST.hud3d) EST.hud3d.hidden = false;
   if(EST.btn) EST.btn.setAttribute('aria-pressed','true');
+  /* La marca en el cuerpo aparta el HUD del visor (brújula, escala, ficha) y el
+     botón de cine: en planta no puede haber cine. */
+  var b = document.body;
+  if(b && b.classList) b.classList.add('adc-plano');
 }
 
 /* =====================================================================================
@@ -1061,7 +1237,7 @@ AD.plano = {
 function monta(){
   if(EST.montado) return true;
   var a = api();
-  if(!a.C || !a.INT || !a.escena || !a.camara) return false;
+  if(!casaDatos().muros || !intDatos().estancias || !a.escena || !a.camara) return false;
   css();
   creaPanel();
   creaBoton();

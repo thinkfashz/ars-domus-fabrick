@@ -12,11 +12,11 @@
 
 | Comprobación | Resultado |
 |---|---|
-| `node /tmp/opencode/banco.js "<repo>"` (banco del coordinator) | 0 fallos |
-| `node /tmp/opencode/banco-R.js "<repo>"` (banco propio, ver §6) | 36 comprobaciones OK, 0 fallos |
+| `node herramientas/banco.js` (el banco del coordinator, ya movido al repo y ampliado con `luz` y `cctv`) | 10/10 módulos, **0 fallos** |
+| `node /tmp/opencode/banco-R.js "<repo>"` (banco propio, ver §6) | 40 comprobaciones OK, 0 fallos |
 | `node --check` de los tres archivos tocados | OK |
 | `CASA=demo npm run check` | sintaxis OK |
-| `node herramientas/build.mjs` | `dist/` listo (8 módulos copiados) |
+| `node herramientas/build.mjs` | `dist/` listo (módulos copiados) |
 
 El banco del coordinator **no alcanza** para dos de los tres archivos: su DOM de
 mentira no parsea `innerHTML` (el hub y el panel del plano se quedan a ciegas) y
@@ -46,6 +46,14 @@ Además:
 - `alPulsar` va en `try/catch`: un módulo que revienta **no se lleva el visor**
   (queda el aviso en consola y la barra sigue viva).
 - El reloj de refresco (600 ms) no hace nada con la pestaña en segundo plano.
+- **Botón «CCTV»** para `modulo/cctv.js` (nuevo): expone `alterna` y `abierto`,
+  la misma forma que el hub, así que entra con el mismo patrón (icono `cctv`
+  nuevo en `AD.iconos`). Con seis botones la fila del móvil sigue cabiendo
+  (6 × 44 + 5 × 6 = 294 px en 366 px útiles).
+- `modulo/luz.js` (nuevo) **no tiene botón**: su API (`AD.luz`) expone
+  `ponDensidad`, `enciende`, `aplica`… pero **no hay estado on/off** que
+  alternar. Si se quiere un botón de «Calor», hace falta que el módulo exponga
+  algo tipo `AD.luz.alterna()` y `AD.luz.encendida()`.
 
 ### 2.2 `modulo/hub.js` — el hub y la cocina (4 fallos reales)
 
@@ -162,6 +170,23 @@ HUD.rango.addEventListener('pointerdown', function(e){ e.stopPropagation(); });
 > Nota: en el banco propio (DOM con parser de `innerHTML`) el módulo de
 > cámaras **carga y abre bien**; el fallo aparece solo si el panel se deforma.
 
+### 3.4 `modulo/cameras.js` — `marcaCine` no existía (**ya corregido en paralelo**)
+
+- **Dónde**: se llamaba en `abre()` y en `cierra()`; la definición **no existía
+  en ningún sitio** del módulo.
+- **Síntoma**: `ReferenceError: marcaCine is not defined` **al pulsar el botón
+  «Cine»** de la barra de Fabrick. El panel se abría, pero la excepción cortaba
+  `abre()` **antes** de `E.modo = 'cine'`: el modo cine no arrancaba.
+- **Cómo se detectó**: el banco propio pulsa los botones de la barra; el error
+  salía por consola, no como fallo del banco (el `try/catch` de `alPulsar` lo
+  apaga y el visor sobrevive).
+- **Estado**: el agente de cámaras lo corrigió en paralelo, minutos después:
+  `marcaCine(on)` alterna la clase `adc-cine` del `body` para que el CSS aparte
+  el HUD del visor mientras hay cine. **Ya está bien**; se deja anotado porque
+  es el mismo tipo de fallo que tumbó el visor con `LUC` (una función llamada
+  antes de existir) y porque explica por qué el botón «Cine» no hacía nada
+  durante un rato.
+
 ---
 
 ## 4. Lo que queda sin hacer (y por qué)
@@ -170,8 +195,9 @@ HUD.rango.addEventListener('pointerdown', function(e){ e.stopPropagation(); });
 |---|---|
 | Publicar `salirTour` en `AD.api` | Es `visor.js`, que no es mío (queda en §3.1 para el coordinator) |
 | Guardar los `querySelector` de plano y cámaras | Archivos de otros agentes (§3.2 y §3.3) |
+| Botón de «Calor» para `modulo/luz.js` | Su API no tiene estado on/off que alternar: hace falta `AD.luz.alterna()` + `AD.luz.encendida()` en ese módulo (§2.1) |
 | Que el **visor** avise a los módulos cuando cambia de versión | Ahora el hub lo deduce de `AD.api.VERSION` y `AD.api.GRUPOS_V`, que ya se actualizan solos. Un `AD.alCambiarVersion(fn)` sería más limpio, pero exigiría tocar `visor.js` |
-| Que la cocina **no** registre las dos versiones | El filtro está en el hub (el que muestra). La cocina registra las dos porque las dos cocinas están en la escena; si se filtrara en la cocina, el idserviría de menos |
+| Que la cocina **no** registre las dos versiones | El filtro está en el hub (el que muestra). La cocina registra las dos porque las dos cocinas están en la escena; si se filtrara en la cocina, el id serviría de menos |
 | Probar en un navegador de verdad | En este teléfono el Chromium con WebGL por software tumba el renderizador; la comprobación es con el banco de Node + DOM de mentira |
 | Un botón de «Control» que abra el plano en el móvil sin pisar el paseo | Resuelto con CSS (icono + esquina), pero falta probarlo con el pulgar |
 
@@ -209,21 +235,23 @@ No se toca el banco del coordinator (lo usan otros agentes). Este copia su
 esqueleto y le añade:
 
 - un **DOM de mentira que parsea `innerHTML`** (con `className` → `classList`,
-  `firstChild`, `textContent` que concatena, selectores de etiqueta) — sin
-  esto el hub y el plano se quedaban a ciegas;
+  `firstChild`, `textContent` que concatena, selectores de etiqueta, contexto 2D
+  de mentira) — sin esto el hub, el plano y el módulo de luz se quedaban a ciegas;
 - `C0` y `GRUPOS_V` en `AD.api`, con dos grupos de versión y una puerta en
   cada uno;
-- **36 comprobaciones**: los 8 módulos montan sin excepciones, la barra pinta
-  5 botones, cada botón llama al método de su módulo, el `aria-pressed` sigue
-  al estado real, el hub filtra por versión (piezas y puertas), la lista se
-  rehace al cambiar de versión, la carga no bloquea y el aviso de error sigue
-  viéndose en el `#cargando`.
+- **40 comprobaciones**: los 10 módulos montan sin excepciones, la barra pinta
+  un botón por módulo, cada botón llama al método de su módulo, el
+  `aria-pressed` sigue al estado real, el hub filtra por versión (piezas y
+  puertas), la lista se rehace al cambiar de versión, la carga no bloquea y el
+  aviso de error sigue viéndose en el `#cargando`.
 
 ```
 node /tmp/opencode/banco-R.js "/sdcard/Documents/Build house/repo"
-→ comprobaciones OK: 36 · fallos: 0
+→ comprobaciones OK: 40 · fallos: 0
 ```
 
 Es de lectura y no toca el repo: sirve de red de seguridad para lo que se toque
 después (el que siga con el hub o con la barra no tiene que reconstruir el
-caso).
+caso). **No se sustituye al banco del repo** (`herramientas/banco.js`): aquel
+es la red de seguridad común y lo amplió el coordinator con `luz` y `cctv`;
+este cubre lo que aquel todavía no ve (el DOM real, el hub y la barra).

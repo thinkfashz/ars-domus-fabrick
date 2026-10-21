@@ -43,6 +43,9 @@ var AD = window.AD || (window.AD = {});
   var DIST_MIN = 2.2;        // distancia mínima al punto de mira (límite del visor)
   var MAX_TOMAS = 18;        // tope de tomas en la lista
   var ELEV_MAX = 13.0;       // grados de elevación hacia arriba (lo que permite la órbita)
+  var SOMBRA_MAX = 2048;     // px: el mapa de sombras no pasa de 2048 (64 MB en 4096)
+  var DPR_MAX = 2;           // límite del pixelRatio
+  var HUD_SEG = 12;          // px: separación del HUD con el borde del encuadre
 
   var E = {
     modo:null,               // null | 'cine' | 'paseo'
@@ -50,7 +53,7 @@ var AD = window.AD || (window.AD = {});
     lb:false, rot:true, fundido:false, k4:false,
     tomas:[], rutas:[], ruta:0, s:0,
     cede:false, arrYaw:0, arrPitch:0, mirando:0,
-    capAntes:null, pxAntes:0, sombraAntes:0, version:'', listo:false
+    capAntes:null, pxAntes:0, sombraAntes:0, version:'', listo:false, camAntes:null
   };
   var TOMAS = E.tomas;       // la lista viva (la que ve el coordinator)
   var HUD = null;
@@ -63,6 +66,9 @@ var AD = window.AD || (window.AD = {});
   function datos(){
     var a = api(); if(!a) return null;
     var base = a.C0 || a.C; if(!base) return null;
+    /* El coordinator puede pasar la casa entera o solo su parte de
+       construcción: se normaliza para no leer muros de un undefined. */
+    if(!base.muros && base.casa && base.casa.muros) base = base.casa;
     var v = a.VERSION || 'actual';
     var c = base;
     /* La versión mejorada solo trae muros, huecos e interior: el origen, el
@@ -152,17 +158,22 @@ var AD = window.AD || (window.AD = {});
     cacheLineas = {version:d.version, lista:lista};
     return lista;
   }
-  /* Distancia con signo a la cara de un muro: negativa si el punto está
-     dentro. `pasable` deja pasar por las puertas (para el recorrido). */
-  function distMuro(u, v, pasable){
+  /* Distancia a la cara de un muro (0 si el punto está dentro del muro).
+     Se mide contra el TRAMO, no contra la recta: si la cámara se queda justo
+     al final de un muro, la distancia a la recta da 1e9 y la cámara se mete
+     dentro del tabique. Se usa siempre la lista `solido` (muros + ventanas):
+     por una puerta se pasa porque no hay nada, pero por una ventana no; y el
+     retiro de 0,25 m también cuenta con las ventanas. */
+  function distMuro(u, v){
     var ls = lineas(), mejor = 1e9;
     for(var i=0;i<ls.length;i++){
-      var L = ls[i], tr = pasable ? L.muro : L.solido;
+      var L = ls[i], tr = L.solido;
       var p = L.horiz ? u : v, q = L.horiz ? v : u;
       for(var j=0;j<tr.length;j++){
-        var t = tr[j];
-        if(p < t.a - 0.001 || p > t.b + 0.001) continue;
-        var d = Math.abs(q - L.linea) - t.e/2;
+        var t = tr[j], te = (t.e || 0.2)/2;
+        var da = p < t.a ? t.a - p : (p > t.b ? p - t.b : 0);
+        var db = q < L.linea - te ? (L.linea - te) - q : (q > L.linea + te ? q - (L.linea + te) : 0);
+        var d = Math.hypot(da, db);
         if(d < mejor) mejor = d;
       }
     }
@@ -286,7 +297,7 @@ var AD = window.AD || (window.AD = {});
   }
   /* ¿La cámara está despejada? (muro a ≥ 0,25 m y ningún mueble encima) */
   function sitioLibre(u, v, altura, excepto){
-    if(distMuro(u, v, false) < RETIRO_MURO) return false;
+    if(distMuro(u, v) < RETIRO_MURO) return false;
     if(dentroDeMueble(u, v, altura, excepto, 0.05)) return false;
     return true;
   }
@@ -399,7 +410,7 @@ var AD = window.AD || (window.AD = {});
   function haceTomas(){
     var d = datos(); if(!d) return;
     var inte = d.inte, casa = d.casa;
-    var nuevas = [], ext = [];
+    var ext = [];
 
     /* Las exteriores: la casa desde el jardín y la casa desde el aire. */
     var centro = centroCasa(casa);
@@ -413,47 +424,86 @@ var AD = window.AD || (window.AD = {});
                 mira:centro, ymira:0, sinTejado:false, arboles:true, exterior:true, cenital:true});
     }
 
-    /* Una tanda por estancia. */
+    /* Una tanda por estancia: cada estancia da sus tomas según la pieza que
+       manda en ella. */
+    var porEstancia = [];
     inte.estancias.forEach(function(est){
       var lista = mando(inte, est);
-      if(!lista.length) return;
+      if(!lista.length){
+        /* Una estancia sin muebles (un pasillo) no tiene pieza que enseñar, pero
+           sí es un espacio: se le hace un plano general mirando al centro. */
+        var gen0 = tomaGeneral(est, null);
+        if(gen0) porEstancia.push({est:est, tomas:[gen0]});
+        return;
+      }
       var foco = lista[0], segundo = lista[1] || lista[0];
-      var suelo = est.cota || 0;
       var techo = techoDe(est, (est.caja[1]+est.caja[3])/2);
-      var gen = tomaGeneral(est, foco);
-      if(gen) nuevas.push(gen);
-      var lat = tomaLateral(est, segundo);
-      if(lat) nuevas.push(lat);
-      var det = tomaDetalle(est, foco);
-      if(det) nuevas.push(det);
+      var suyas = [];
+      var gen = tomaGeneral(est, foco); if(gen) suyas.push(gen);
+      var lat = tomaLateral(est, segundo); if(lat) suyas.push(lat);
+      var det = tomaDetalle(est, foco); if(det) suyas.push(det);
       var altoP = null;
       lista.forEach(function(m){ if(huella(m).alto >= 1.8 && (!altoP || huella(m).alto > huella(altoP).alto)) altoP = m; });
       if(altoP){
         var cp = tomaContrapicado(est, altoP);
-        if(cp) nuevas.push(cp);
+        if(cp) suyas.push(cp);
       }
       var area = (est.caja[2]-est.caja[0])*(est.caja[3]-est.caja[1]);
       if(area >= 10 && !est.fuera){
         var cn = tomaCenital(est, foco, techo);
-        if(cn) nuevas.push(cn);
+        if(cn) suyas.push(cn);
       }
+      if(suyas.length) porEstancia.push({est:est, tomas:suyas});
     });
 
-    /* El travelling: un arco alrededor de la pieza que manda de la estancia grande. */
+    /* El travelling: un arco alrededor de la pieza que manda de la estancia
+       grande. Va en la lista de esa estancia, no aparte, para que el reparto
+       justo de abajo lo tenga en cuenta. */
     var grande = null;
     inte.estancias.forEach(function(e){
       var a = (e.caja[2]-e.caja[0])*(e.caja[3]-e.caja[1]);
       if(!e.fuera && (!grande || a > grande.a)) grande = {e:e, a:a};
     });
     if(grande){
-      var lst = mando(inte, grande.e);
-      if(lst.length){
+      for(var gi=0; gi<porEstancia.length; gi++){
+        if(porEstancia[gi].est.id !== grande.e.id) continue;
+        var lst = mando(inte, grande.e);
+        if(!lst.length) break;
         var tr = tomaTravelling(grande.e, lst[0]);
-        if(tr) nuevas.push(tr);
+        if(tr) porEstancia[gi].tomas.push(tr);
+        break;
       }
     }
 
-    var todas = ext.concat(nuevas);
+    /* El reparto es justo. Si se llena por orden de estancia, las últimas
+       estancias se quedan sin plano (la lista se corta a 18). Aquí:
+       1) un general por estancia (todas tienen su plano),
+       2) el travelling (la toma estrella),
+       3) el resto, primero uno por estancia y luego los que sobren. */
+    var finales = [], cola = [];
+    porEstancia.forEach(function(g){
+      finales.push(g.tomas[0]);
+      for(var i=1;i<g.tomas.length;i++) cola.push(g.tomas[i]);
+    });
+    var trav = null;
+    for(var i=0;i<cola.length;i++) if(cola[i].travelling){ trav = cola.splice(i,1)[0]; break; }
+    if(trav) finales.push(trav);
+    var PRIO = {detalle:0, lateral:1, contrapicado:2, cenital:3};
+    cola.sort(function(a,b){
+      var pa = PRIO[a.plano] !== undefined ? PRIO[a.plano] : 9;
+      var pb = PRIO[b.plano] !== undefined ? PRIO[b.plano] : 9;
+      return pa - pb;
+    });
+    var usadas = {}, elegidas = [];
+    for(var j=0;j<cola.length;j++){
+      var t = cola[j];
+      if(usadas[t.estancia]) continue;
+      usadas[t.estancia] = 1; elegidas.push(t);
+    }
+    for(var k=0;k<cola.length;k++) if(elegidas.indexOf(cola[k]) < 0) elegidas.push(cola[k]);
+    finales = finales.concat(elegidas);
+
+    var todas = ext.concat(finales);
     if(todas.length > MAX_TOMAS) todas = todas.slice(0, MAX_TOMAS);
     TOMAS.length = 0;
     todas.forEach(function(t, i){
@@ -463,23 +513,27 @@ var AD = window.AD || (window.AD = {});
     });
   }
 
+  /* La altura de una estancia: el suelo terminado está a `cota` sobre el
+     terreno, así que la cámara a 1,62 m del suelo está a cota+1,62 del mundo. */
+  function alto(est, h){ return (est.cota || 0) + h; }
+
   function tomaGeneral(est, pieza){
     var k = est.caja;
     var esquinas = [[k[0]+0.55, k[1]+0.55], [k[2]-0.55, k[1]+0.55], [k[0]+0.55, k[3]-0.55], [k[2]-0.55, k[3]-0.55]];
     var mejor = null;
-    var yMira = (est.cota||0) + (pieza ? 1.2 : 1.25);
+    var yMira = alto(est, pieza ? 1.2 : 1.25);
     esquinas.forEach(function(c){
       if(!sitioLibre(c[0], c[1], OJO, null)) return;
-      if(pieza && !lineaLibre(c[0], c[1], pieza.uv[0], pieza.uv[1], (est.cota||0)+OJO, yMira)) return;
+      if(pieza && !lineaLibre(c[0], c[1], pieza.uv[0], pieza.uv[1], alto(est, OJO), yMira)) return;
       var dd = pieza ? Math.hypot(c[0]-pieza.uv[0], c[1]-pieza.uv[1]) : 3;
-      var m = dd - (distMuro(c[0], c[1], false) < 0.6 ? 2 : 0);
+      var m = dd - (distMuro(c[0], c[1]) < 0.6 ? 2 : 0);
       if(!mejor || m > mejor.m) mejor = {u:c[0], v:c[1], m:m};
     });
     if(!mejor) return null;
     var mira = pieza ? [pieza.uv[0], pieza.uv[1]] : [(k[0]+k[2])/2, (k[1]+k[3])/2];
     return {id:'GEN-'+est.id, nombre:est.nombre, plano:'general', dur:5.0, hfov:72,
-            rotulo:est.nombre, estancia:est.id, pos:[mejor.u, mejor.v], y:OJO,
-            mira:mira, ymira:(pieza ? 1.2 : 1.25), sinTejado:false, arboles:false};
+            rotulo:est.nombre, estancia:est.id, pos:[mejor.u, mejor.v], y:alto(est, OJO),
+            mira:mira, ymira:alto(est, pieza ? 1.2 : 1.25), sinTejado:false, arboles:false};
   }
 
   function tomaLateral(est, pieza){
@@ -491,10 +545,10 @@ var AD = window.AD || (window.AD = {});
       for(var k=0;k<4;k++){
         var dist = mk.h.hx + 1.9 - k*0.2;
         var u = pieza.uv[0] + dx*dist, v = pieza.uv[1] + dz*dist;
-        if(sitioLibre(u, v, 1.45, pieza) && distPieza(pieza, u, v) >= RETIRO_MUEBLE - 0.01)
+        if(sitioLibre(u, v, OJO, pieza) && distPieza(pieza, u, v) >= RETIRO_MUEBLE)
           return {id:'LAT-'+est.id+'-'+(pieza.id||''), nombre:est.nombre+' · perfil', plano:'lateral', dur:4.0,
-                  hfov:66, rotulo:est.nombre, estancia:est.id, pos:[u, v], y:1.45,
-                  mira:[pieza.uv[0], pieza.uv[1]], ymira:1.15, sinTejado:false, arboles:false};
+                  hfov:66, rotulo:est.nombre, estancia:est.id, pos:[u, v], y:alto(est, OJO),
+                  mira:[pieza.uv[0], pieza.uv[1]], ymira:alto(est, 1.15), sinTejado:false, arboles:false};
       }
     }
     return null;
@@ -508,12 +562,15 @@ var AD = window.AD || (window.AD = {});
       var a = (g%2 ? 1 : -1)*Math.floor(g/2)*radians(12);
       var dx = d[0]*Math.cos(a) - d[1]*Math.sin(a), dz = d[0]*Math.sin(a) + d[1]*Math.cos(a);
       for(var k=0;k<4;k++){
-        var dist = mk.h.hz + 0.9 - k*0.12;
+        /* El detalle se queda a 0,80–0,95 m de la cara de la pieza. El visor no
+           deja acercar la cámara a menos de 2 m del punto de mira, así que el
+           primer plano se consigue con el FOV corto, no acercando el objetivo. */
+        var dist = mk.h.hz + 0.95 - k*0.05;
         var u = pieza.uv[0] + dx*dist, v = pieza.uv[1] + dz*dist;
-        if(sitioLibre(u, v, y, pieza) && distPieza(pieza, u, v) >= 0.55)
+        if(sitioLibre(u, v, y, pieza) && distPieza(pieza, u, v) >= 0.80)
           return {id:'DET-'+(pieza.id||est.id), nombre:'Detalle de '+(pieza.tipo||''), plano:'detalle',
-                  dur:3.6, hfov:52, rotulo:est.nombre, estancia:est.id, pos:[u, v], y:y,
-                  mira:[pieza.uv[0], pieza.uv[1]], ymira:y, sinTejado:false, arboles:false};
+                  dur:3.6, hfov:52, rotulo:est.nombre, estancia:est.id, pos:[u, v], y:alto(est, y),
+                  mira:[pieza.uv[0], pieza.uv[1]], ymira:alto(est, y), sinTejado:false, arboles:false};
       }
     }
     return null;
@@ -536,8 +593,8 @@ var AD = window.AD || (window.AD = {});
         var yMira = Math.min(huella(pieza).alto, yCam + dy);
         if(yMira - yCam < 0.28) yMira = yCam + 0.28;
         return {id:'CON-'+(pieza.id||est.id), nombre:'Contrapicado', plano:'contrapicado', dur:4.2,
-                hfov:74, rotulo:est.nombre, estancia:est.id, pos:[u, v], y:yCam,
-                mira:[pieza.uv[0], pieza.uv[1]], ymira:yMira, sinTejado:false, arboles:false};
+                hfov:74, rotulo:est.nombre, estancia:est.id, pos:[u, v], y:alto(est, yCam),
+                mira:[pieza.uv[0], pieza.uv[1]], ymira:alto(est, yMira), sinTejado:false, arboles:false};
       }
     }
     return null;
@@ -554,8 +611,8 @@ var AD = window.AD || (window.AD = {});
       var u = pieza.uv[0] + dx*0.85, v = pieza.uv[1] + dz*0.85;
       if(!sitioLibre(u, v, yCam, pieza)) continue;
       return {id:'CEN-'+est.id, nombre:'Cenital de '+(pieza.tipo||''), plano:'cenital', dur:4.0,
-              hfov:78, rotulo:est.nombre, estancia:est.id, pos:[u, v], y:yCam,
-              mira:[pieza.uv[0], pieza.uv[1]], ymira:0.05, sinTejado:true, arboles:false, cenital:true};
+              hfov:78, rotulo:est.nombre, estancia:est.id, pos:[u, v], y:alto(est, yCam),
+              mira:[pieza.uv[0], pieza.uv[1]], ymira:alto(est, 0.05), sinTejado:true, arboles:false, cenital:true};
     }
     return null;
   }
@@ -575,17 +632,22 @@ var AD = window.AD || (window.AD = {});
     var R = Math.max(2.3, Math.min(4.6, rmax - 0.45));
     var a0 = Math.atan2(mk.s, mk.c) - radians(38);
     var barrido = radians(46);
-    var n = 9, validas = 0;
+    var n = 9, validas = 0, anterior = null;
     for(var i=0;i<n;i++){
       var a = a0 + barrido*i/(n-1);
       var u = centro[0] + Math.sin(a)*R, v = centro[1] + Math.cos(a)*R;
-      if(sitioLibre(u, v, OJO, pieza) && enEstancia(est, u, v)) validas++;
+      if(sitioLibre(u, v, OJO, pieza) && enEstancia(est, u, v)){
+        validas++;
+        /* y el arco no cruza ningún tabique entre un punto y el siguiente */
+        if(anterior && !segmentoLibre(anterior[0], anterior[1], u, v)) validas = -99;
+        anterior = [u, v];
+      }
     }
     if(validas < n - 1) return null;
     return {id:'TRA-'+est.id, nombre:'Travelling', plano:'travelling', dur:7.0, hfov:70,
-            rotulo:est.nombre, estancia:est.id, travelling:true,
+            rotulo:est.nombre, estancia:est.id, travelling:true, y:alto(est, OJO),
             arco:{centro:centro, r:R, a0:a0, barrido:barrido},
-            mira:[pieza.uv[0], pieza.uv[1]], ymira:1.15, sinTejado:false, arboles:false};
+            mira:[pieza.uv[0], pieza.uv[1]], ymira:alto(est, 1.15), sinTejado:false, arboles:false};
   }
   function enEstancia(est, u, v){
     var k = est.caja;
@@ -631,7 +693,7 @@ var AD = window.AD || (window.AD = {});
         var dd = pieza ? Math.hypot(u - pieza.uv[0], v - pieza.uv[1]) : 2.5;
         if(dd < 1.1) continue;
         var m = -Math.abs(dd - 2.5);
-        if(distMuro(u, v, false) < 0.6) m -= 1.2;
+        if(distMuro(u, v) < 0.6) m -= 1.2;
         if(cercanoAMueble(u, v, 0.4)) m -= 1.5;                 // no flotar encima de un mueble
         if(pieza && !lineaLibre(u, v, pieza.uv[0], pieza.uv[1], (est.cota||0)+OJO, alturaMira)) continue;
         if(desde && !segmentoLibre(desde[0], desde[1], u, v)) continue;
@@ -656,7 +718,7 @@ var AD = window.AD || (window.AD = {});
     var n = Math.max(8, Math.ceil(L/0.22));
     for(var i=1;i<n;i++){
       var t = i/n, u = u0 + (u1-u0)*t, v = v0 + (v1-v0)*t;
-      if(distMuro(u, v, true) < 0.05) return false;
+      if(distMuro(u, v) < 0.05) return false;
       if(dentroDeMueble(u, v, 0.5, null, 0.3)) return false;
     }
     return true;
@@ -771,25 +833,31 @@ var AD = window.AD || (window.AD = {});
      9. El HUD
      ------------------------------------------------------------------ */
   var CSS = [
+    ':root{--adc-barra:0px}',
     '#adc-banda{position:fixed;left:0;right:0;pointer-events:none;z-index:24;display:none}',
     '#adc-banda.on{display:block}',
     '#adc-banda i{position:absolute;left:0;right:0;height:0;background:#000;display:block}',
     '#adc-fondo{position:fixed;left:0;right:0;top:0;bottom:0;background:#000;opacity:0;pointer-events:none;z-index:25;display:none}',
     '#adc-fondo.on{display:block}',
-    '#adc-titulo{position:fixed;left:0;right:0;bottom:12%;text-align:center;color:#fff;z-index:26;',
+    /* El rótulo va DENTRO del encuadre: con la banda apagada caía en la barra
+       negra de abajo y no se leía. */
+    '#adc-titulo{position:fixed;left:0;right:0;bottom:calc(var(--adc-barra) + 58px);text-align:center;color:#fff;z-index:26;',
     '  pointer-events:none;opacity:0;transition:opacity .45s ease;font:600 15px/1.3 system-ui,sans-serif;',
     '  text-shadow:0 2px 10px rgba(0,0,0,.75)}',
     '#adc-titulo.on{opacity:1}',
     '#adc-titulo span{display:inline-block;background:rgba(0,0,0,.45);padding:7px 14px;border-radius:4px;',
     '  border-left:3px solid var(--accent,#4ab5cb)}',
-    '#adc-btn{position:fixed;right:16px;top:96px;z-index:27;min-width:56px;min-height:44px;padding:9px 14px;',
+    /* El botón, arriba a la derecha DENTRO del encuadre (ahí estaba la barra
+       de Fabrick, que en cine se aparta). Los controles, como una hoja desde
+       abajo: en un móvil, un panel de 320 px tapaba la mitad de la pantalla. */
+    '#adc-btn{position:fixed;right:12px;top:calc(var(--adc-barra) + 12px);z-index:27;min-width:56px;min-height:44px;padding:9px 14px;',
     '  font:600 12.5px/1 system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;',
     '  color:var(--ink,#e9ede2);background:var(--surface,#181c16);border:1px solid var(--line,#2c3328);',
     '  border-radius:4px;box-shadow:0 6px 18px rgba(0,0,0,.35)}',
     '#adc-btn[aria-pressed="true"]{background:var(--accent,#4ab5cb);color:var(--accent-ink,#06222a);border-color:var(--accent,#4ab5cb)}',
     '#adc-btn:focus-visible{outline:2px solid var(--accent,#4ab5cb);outline-offset:2px}',
-    '#adc-panel{position:fixed;right:16px;top:148px;z-index:28;width:min(320px,calc(100vw - 32px));',
-    '  max-height:min(64vh,560px);overflow:auto;display:none;padding:12px;border-radius:6px;',
+    '#adc-panel{position:fixed;left:8px;right:8px;bottom:calc(var(--adc-barra) + 8px);z-index:28;',
+    '  max-height:min(46dvh,430px);overflow:auto;display:none;padding:12px;border-radius:8px;',
     '  background:var(--surface,#181c16);border:1px solid var(--line,#2c3328);',
     '  box-shadow:0 12px 34px rgba(0,0,0,.45);color:var(--ink,#e9ede2);font:13px/1.4 system-ui,sans-serif}',
     '#adc-panel.on{display:block}',
@@ -812,7 +880,17 @@ var AD = window.AD || (window.AD = {});
     '  color:var(--muted,#8d9683);margin-left:auto}',
     '#adc-panel label{display:block;margin:2px 0 8px;font-size:11.5px;color:var(--muted,#8d9683)}',
     '#adc-panel input[type=range]{width:100%;min-height:44px;accent-color:var(--accent,#4ab5cb)}',
-    '#adc-panel .aviso{font-size:11.5px;color:var(--muted,#8d9683);margin:8px 0 0;line-height:1.45}'
+    '#adc-panel .aviso{font-size:11.5px;color:var(--muted,#8d9683);margin:8px 0 0;line-height:1.45}',
+    /* Mientras hay cine, el HUD del visor (brújula, escala, ficha, etiquetas)
+       se aparta: con la banda de cine encima quedaba tapado y estorbaba.
+       Y el botón del plano tampoco: cine y planta son excluyentes. */
+    'body.adc-cine #brujula,body.adc-cine #escala,body.adc-cine #hud,body.adc-cine #etiquetas,',
+    'body.adc-cine #ids,body.adc-cine #mira,body.adc-cine #tour-hud,body.adc-cine #ir-pie,',
+    'body.adc-cine #salir-pie,body.adc-cine #puerta-pie,body.adc-cine #version-pie,',
+    'body.adc-cine #correr-pie,body.adc-cine #noche-pie,body.adc-cine #llevar-pie,',
+    'body.adc-cine #todo-pie,body.adc-cine #ajustes-pie,body.adc-cine #ajustes-caja,',
+    'body.adc-cine #pie-aviso,body.adc-cine #panel,body.adc-cine #abrir-panel,body.adc-cine #fabrick,',
+    'body.adc-cine #plano-btn{display:none!important}'
   ].join('\n');
 
   function creaHUD(){
@@ -854,7 +932,7 @@ var AD = window.AD || (window.AD = {});
         '<button class="t" data-op="lb" aria-pressed="false">Letterbox</button>' +
         '<button class="t" data-op="rot" aria-pressed="true">Rótulos</button>' +
         '<button class="t" data-op="fundido" aria-pressed="false">Fundido</button>' +
-        '<button class="t" data-op="k4" aria-pressed="false">4K</button>' +
+        '<button class="t" data-op="k4" aria-pressed="false">Alta</button>' +
       '</div>' +
       '<div class="fila">' +
         '<button class="t" data-accion="paseo">Recorrido interior</button>' +
@@ -934,21 +1012,33 @@ var AD = window.AD || (window.AD = {});
     E.lb = v;
     if(!HUD) return;
     HUD.banda.classList.toggle('on', !!v);
-    if(v) ajustaBanda();
-    else { HUD.arriba.style.height = '0px'; HUD.abajo.style.height = '0px'; }
+    ajustaBanda();
   }
   function ajustaBanda(){
     if(!HUD) return;
-    var h = window.innerHeight, w = window.innerWidth;
-    var alto = Math.min(h, w/2.35);
-    var barra = Math.max(0, (h - alto)/2);
+    var h = window.innerHeight || 844, w = window.innerWidth || 390;
+    /* El encuadre de cine: 2,35:1 si cabe, pero la banda no se come más del
+       11 % de la pantalla por arriba (en un móvil, 340 px de negro no dejan
+       ver nada). */
+    var barra = E.lb ? Math.min((h - w/2.35)/2, h*0.11) : 0;
+    if(!(barra > 0)) barra = 0;
     HUD.arriba.style.height = barra.toFixed(0)+'px';
     HUD.abajo.style.height = barra.toFixed(0)+'px';
+    /* el HUD se coloca respecto a la banda: todo lo que sea del cine queda
+       dentro del encuadre y nunca debajo de la banda negra */
+    var r = document.documentElement;
+    if(r && r.style && r.style.setProperty) r.style.setProperty('--adc-barra', barra.toFixed(0)+'px');
+  }
+  /* Marca el cuerpo para que el CSS aparte el HUD del visor mientras hay cine. */
+  function marcaCine(on){
+    var b = document.body;
+    if(b && b.classList) b.classList.toggle('adc-cine', !!on);
   }
   function titulo(txt){
     if(!HUD) return;
     var t = HUD.titulo.querySelector('span');
     if(!txt){ HUD.titulo.classList.remove('on'); return; }
+    if(!t) return;
     t.textContent = txt;
     HUD.titulo.classList.add('on');
   }
@@ -970,13 +1060,34 @@ var AD = window.AD || (window.AD = {});
     E.listo = true;
     return true;
   }
+  /* Las tomas se calculan al cargar: la casa ya está y así el primer toque en
+     «Cine» no tarda (en un móvil, medio segundo se nota). Las rutas se hacen
+     la primera vez que se pide el recorrido, que es más lento. */
+  function preparaTomas(){
+    var d = datos(); if(!d) return false;
+    if(E.version === d.version && TOMAS.length) return true;
+    E.version = d.version;
+    cacheLineas = null;
+    try{ haceTomas(); }catch(e){ return false; }
+    return true;
+  }
   function abre(){
     if(!api()) return false;
     var d = datos(); if(!d) return false;
+    /* La planta 3D y el cine son excluyentes: los dos escriben la cámara en
+       cada cuadro y se pisarían. Si la planta está abierta, se cierra. */
+    if(window.AD && AD.plano && AD.plano.cerrar && AD.plano.esPlan3D && AD.plano.esPlan3D()) AD.plano.cerrar();
+    /* Y con el paseo a pie: el visor repone la cámara desde `pie` en cada
+       cuadro, y las dos se pisarían. */
+    if(!libreDePaseo()){
+      if(HUD) HUD.info.textContent = 'No se ha podido salir del paseo a pie.';
+      return false;
+    }
     if(!E.listo || E.version !== d.version) construye();
     creaHUD();
     HUD.panel.classList.add('on');
     HUD.btn.setAttribute('aria-pressed','true');
+    marcaCine(true);
     guardaCapas();
     E.modo = 'cine';
     E.i = Math.max(0, Math.min(TOMAS.length - 1, E.i));
@@ -993,12 +1104,14 @@ var AD = window.AD || (window.AD = {});
     letra(false); fundido(0); titulo('');
     restauraCapas();
     if(E.k4) calidad4K(false);
+    marcaCine(false);
   }
   function alterna(){ if(E.modo) cierra(); else abre(); }
 
   function guardaCapas(){
     var a = api(); if(!a || !a.capas || E.capAntes) return;
     E.capAntes = {cubierta:a.capas.cubierta.visible, arboles:a.capas.arboles.visible};
+    E.camAntes = guardaCamara();
   }
   function restauraCapas(){
     var a = api(); if(!a || !a.capas || !E.capAntes) return;
@@ -1008,6 +1121,39 @@ var AD = window.AD || (window.AD = {});
     if(c1) c1.checked = E.capAntes.cubierta;
     if(c2) c2.checked = E.capAntes.arboles;
     E.capAntes = null;
+    if(E.camAntes){ restauraCamara(E.camAntes); E.camAntes = null; }
+  }
+  /* La cámara de antes del cine. El visor no expone el estado de la órbita, se
+     deduce de la cámara: el objetivo está a y=1 (es lo que pone aplicaVista),
+     así que la distancia se saca de la altura de la cámara. */
+  function guardaCamara(){
+    var a = api(); if(!a || !a.camara || typeof THREE === 'undefined') return null;
+    var cam = a.camara, P = cam.position, dir = new THREE.Vector3();
+    cam.getWorldDirection(dir);
+    var u = dir.clone().negate();                    // del objetivo a la cámara
+    if(u.y < 0.08) return null;                      // la cámara está por debajo: no se sabe
+    var dist = (P.y - 1)/u.y;
+    if(!isFinite(dist) || dist <= 0) return null;
+    var obj = P.clone().addScaledVector(u, -dist);
+    return {d:dist, t:Math.atan2(u.x, u.z)*180/Math.PI,
+            p:Math.acos(Math.max(-1, Math.min(1, u.y)))*180/Math.PI,
+            c:[obj.x, obj.z], fov:cam.fov};
+  }
+  function restauraCamara(c){
+    var a = api(); if(!c || !a.aplicaVista) return;
+    a.aplicaVista({d:c.d, t:c.t, p:c.p, c:c.c, fov:c.fov});
+  }
+  /* El paseo a pie y el tour de caminos mueven la cámara en cada cuadro: con el
+     cine puesto se pisarían. Se sale de ellos antes de entrar. */
+  function libreDePaseo(){
+    var a = api();
+    if(a && a.TOUR && a.TOUR.activo) a.TOUR.activo = false;   // el tour va con el paseo
+    if(a && a.pie && a.pie.activo){
+      var s = a.salirPie || (window.__visor && window.__visor.salirPie);
+      if(s){ s(); return true; }
+      return false;                        // no se ha podido salir: no se entra
+    }
+    return true;
   }
   function ponArboles(v){
     var a = api(); if(!a || !a.capas) return;
@@ -1020,7 +1166,7 @@ var AD = window.AD || (window.AD = {});
     var pos, mira;
     if(t.travelling){
       var c = t.arco.centro;
-      pos = mundo(c[0] + Math.sin(t.arco.a0)*t.arco.r, c[1] + Math.cos(t.arco.a0)*t.arco.r, OJO);
+      pos = mundo(c[0] + Math.sin(t.arco.a0)*t.arco.r, c[1] + Math.cos(t.arco.a0)*t.arco.r, t.y);
     } else {
       pos = mundo(t.pos[0], t.pos[1], t.y);
     }
@@ -1054,15 +1200,18 @@ var AD = window.AD || (window.AD = {});
     if(a.escena) a.escena.traverse(function(o){ if(o.isDirectionalLight && o.castShadow && !sol) sol = o; });
     if(v){
       if(!E.pxAntes) E.pxAntes = r.getPixelRatio ? r.getPixelRatio() : 1;
-      r.setPixelRatio(2);
-      if(sol){
+      /* El dpr tiene tope (2). Y el mapa de sombras NO se agranda: 4096 son
+         64 MB de VRAM y en un móvil matan la pestaña. Como mucho se recorta a
+         2048 si el dispositivo traía más. */
+      r.setPixelRatio(Math.min(DPR_MAX, Math.max(E.pxAntes, Math.min(window.devicePixelRatio || 1, DPR_MAX))));
+      if(sol && sol.shadow.mapSize.x > SOMBRA_MAX){
         if(!E.sombraAntes) E.sombraAntes = sol.shadow.mapSize.x;
-        sol.shadow.mapSize.set(4096, 4096);
+        sol.shadow.mapSize.set(SOMBRA_MAX, SOMBRA_MAX);
         if(sol.shadow.map){ sol.shadow.map.dispose(); sol.shadow.map = null; }
       }
       if(r.shadowMap) r.shadowMap.needsUpdate = true;
     } else {
-      r.setPixelRatio(E.pxAntes || Math.min(window.devicePixelRatio || 1, 2));
+      r.setPixelRatio(E.pxAntes || Math.min(window.devicePixelRatio || 1, DPR_MAX));
       if(sol && E.sombraAntes){
         sol.shadow.mapSize.set(E.sombraAntes, E.sombraAntes);
         if(sol.shadow.map){ sol.shadow.map.dispose(); sol.shadow.map = null; }
@@ -1078,10 +1227,18 @@ var AD = window.AD || (window.AD = {});
     if(v){
       if(!E.rutas.length) haceRutas();
       if(!E.rutas.length) return;
+      /* La planta 3D y el cine son excluyentes, y con el paseo a pie también:
+         el visor repone la cámara desde `pie` en cada cuadro. */
+      if(window.AD && AD.plano && AD.plano.cerrar && AD.plano.esPlan3D && AD.plano.esPlan3D()) AD.plano.cerrar();
+      if(!libreDePaseo()){
+        if(HUD) HUD.info.textContent = 'No se ha podido salir del paseo a pie.';
+        return;
+      }
       if(E.modo !== 'paseo') guardaCapas();
       E.modo = 'paseo'; E.s = 0; E.paradaI = 0; E.paradaT = 0; E.cede = false;
       E.play = true; E.arrYaw = 0; E.arrPitch = 0; E.mirando = 0;
       if(HUD){ HUD.panel.classList.add('on'); HUD.btn.setAttribute('aria-pressed','true'); }
+      marcaCine(true);
       ponArboles(false);
       refrescaPanel();
       return;
@@ -1121,7 +1278,7 @@ var AD = window.AD || (window.AD = {});
       var s = k*t.arco.barrido;
       var u = c[0] + Math.sin(t.arco.a0 + s)*t.arco.r;
       var v = c[1] + Math.cos(t.arco.a0 + s)*t.arco.r;
-      var pos = mundo(u, v, OJO), mira = mundo(t.mira[0], t.mira[1], t.ymira);
+      var pos = mundo(u, v, t.y), mira = mundo(t.mira[0], t.mira[1], t.ymira);
       coloca(pos, mira, t.hfov);
     }
     if(E.t >= dur){
@@ -1188,17 +1345,18 @@ var AD = window.AD || (window.AD = {});
   function abrePuertas(pos){
     var a = api(); if(!a || !a.PUERTAS) return;
     if(!window.THREE) return;
-    var v = new THREE.Vector3();
+    if(!vPuerta) vPuerta = new THREE.Vector3();
     a.PUERTAS.forEach(function(p){
       if(!p.g || !p.local) return;
       if(!p.w){
-        try{ p.w = p.g.localToWorld(v.set(p.local[0], p.local[1], p.local[2])).clone(); }
+        try{ p.w = p.g.localToWorld(vPuerta.set(p.local[0], p.local[1], p.local[2])).clone(); }
         catch(e){ return; }
       }
       var d = Math.hypot(p.w.x - pos[0], p.w.z - pos[2]);
       if(d < 2.9) p.obj = 1;
     });
   }
+  var vPuerta = null;
 
   /* ------------------------------------------------------------------
      12. Gestos: mirar y ceder el control
@@ -1306,6 +1464,7 @@ var AD = window.AD || (window.AD = {});
   function listo(){
     enganchaGestos();
     creaHUD();                    // el botón "Cine" existe desde el principio
+    preparaTomas();                // las tomas se calculan ya, para que el cine arranque al instante
     if(!engancha()){
       window.addEventListener('load', function(){
         if(!engancha()){
