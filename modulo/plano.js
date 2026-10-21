@@ -42,7 +42,7 @@ var EST = {
   gPlan:null, tex:null, lienzo:null, ctx:null,
   guardado:null,               // estado de la escena antes de entrar en modo planta
   PL:{x:0, z:0, dist:30, theta:0, phi:0.30, fov:42},
-  act:{id:null, x:0, y:0, mx:0, my:0, pinza:0, mov:0, n:0, d0:0, dmax:0, t0:0}
+  act:{id:null, x:0, y:0, mx:0, my:0, pinza:0, mov:0, n:0, dmax:0, t0:0}
 };
 
 var NORMAL = {N:[0,-1], S:[0,1], E:[1,0], O:[-1,0]};
@@ -112,7 +112,6 @@ function uvDe(x, z){
   var dx = x - o[0], dz = z - o[1];
   return [dx*Math.cos(g) - dz*Math.sin(g), dx*Math.sin(g) + dz*Math.cos(g)];
 }
-function cajaDe(e){ return e.caja; }
 function estanciaEn(u, v){
   var l = estancias();
   for(var i=0; i<l.length; i++){
@@ -786,6 +785,9 @@ function entraPlan3D(){
 
   g.visible = true;
   EST.plan3D = true;
+  /* La planta se orbita con el dedo: los gestos de la orbita del visor se
+     bloquean, o los dos se mueven a la vez y la vista sale imposible. */
+  if(a.bloqueaOrbita) a.bloqueaOrbita(true);
 
   /* La cámara, casi vertical: con el corte a 1,15 m, mirar de lado hace que
      cada tabique tape el ambiente de al lado (la lección del visor 390-1).
@@ -806,6 +808,7 @@ function salePlan3D(restauraCamara){
   if(!EST.plan3D) return;
   var a = api(), capas = a.capas || {}, G = EST.guardado;
   EST.plan3D = false;
+  if(a.bloqueaOrbita) a.bloqueaOrbita(false);
   if(G){
     (G.meshes || []).forEach(function(p){ p[0].visible = p[1]; });
     if(G.cubierta !== null && capas.cubierta) capas.cubierta.visible = G.cubierta;

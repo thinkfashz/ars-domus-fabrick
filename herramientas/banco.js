@@ -57,6 +57,12 @@ function buscar(raiz, sel, uno){
     if(typeof n.innerHTML === 'string' && n.innerHTML){
       if(selCl && n.innerHTML.indexOf(clave) >= 0){ const f = el('div'); f.classList.add(clave); encontrado = f; return; }
       if(selAt && n.innerHTML.indexOf(clave) >= 0){ const f = el('div'); f[clave] = ''; encontrado = f; return; }
+      /* por id escrito en el innerHTML: <button id="x"> */
+      if(selId && n.innerHTML.indexOf('id=\'' + clave + '\'') >= 0){ const f = el('div'); f.id = clave; encontrado = f; return; }
+      if(selId && n.innerHTML.indexOf('id=\'' + clave + '\'') < 0 &&
+         n.innerHTML.indexOf('id=\'' + clave + '\'') < 0 && n.innerHTML.indexOf('id="' + clave + '"') >= 0){
+        const f = el('div'); f.id = clave; encontrado = f; return;
+      }
     }
     (n.children||[]).forEach(c=>{
       if(encontrado) return;
@@ -138,7 +144,7 @@ AD.api = {
   escena, camara, renderer, capas,
   pie:{activo:false,x:0,z:0,y:0,yaw:0,pitch:0},
   TOUR:{}, TOURS:[], PUERTAS:[], PUNTOS:[], pick:[],
-  VISTAS:[], C:CASA, INT:CASA.interior, VERSION:'actual', VERSIONES:['actual'],
+  VISTAS:[], C:CASA.casa, INT:CASA.casa.interior, C0:CASA.casa, VERSION:'actual', VERSIONES:['actual'],
   GRUPOS_V:{actual:[],mejorada:[]}, LZ:{noche:false,todo:false,grupos:{}},
   GIRO:0, SUELO:0.25, aMundo:(u,v)=>[u,v], d2r:d=>d*Math.PI/180,
   entraPie(){}, salirPie(){}, aplicaVista(){}, eligeVista(){},

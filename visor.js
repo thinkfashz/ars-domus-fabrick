@@ -3947,8 +3947,29 @@ function colocar(){
 
 var lienzoGL = renderer.domElement;
 var pt = {act:{}, modo:null, x:0, y:0, pinza:0, mov:0};
+
+/* ── La orbita, para los modulos ───────────────────────────────────────────
+   Un modulo que mueve la camara (la planta, el cine) necesita devolverla EXACTA
+   cuando se cierra: con los angulos de la vista no alcanza, porque al volver
+   el objetivo puede estar a otra altura. Se guardan los cuatro numeros. */
+function orbita(){
+  return {o:[objetivo.x, objetivo.y, objetivo.z], d:dist, t:theta, p:phi, f:camara.fov};
+}
+function restauraOrbita(s){
+  if(!s) return;
+  objetivo.set(s.o[0], s.o[1], s.o[2]);
+  dist = s.d; theta = s.t; phi = s.p;
+  if(s.f){ camara.fov = s.f; camara.updateProjectionMatrix(); }
+  colocar();
+}
+/* Los gestos de la orbita viven en el canvas. Un modulo que se hace cargo de
+   ellos (la planta 3D se orbita con el dedo) los bloquea con esta bandera:
+   sin ella, los dos se mueven a la vez y la vista sale imposible. */
+var orbitaBloqueada = false;
+function bloqueaOrbita(v){ orbitaBloqueada = !!v; }
+
 lienzoGL.addEventListener('pointerdown', function(e){
-  if(pie.activo) return;
+  if(pie.activo || orbitaBloqueada) return;
   try{ lienzoGL.setPointerCapture(e.pointerId); }catch(err){}
   if(edDown(e)){ pt.modo = 'editar'; return; }
   pt.act[e.pointerId] = {x:e.clientX, y:e.clientY};
@@ -3959,7 +3980,7 @@ lienzoGL.addEventListener('pointerdown', function(e){
   panel.classList.remove('abierto');
 });
 lienzoGL.addEventListener('pointermove', function(e){
-  if(pie.activo) return;
+  if(pie.activo || orbitaBloqueada) return;
   if(pt.modo === 'editar'){ edMove(e); return; }
   if(!pt.act[e.pointerId]) return;
   pt.act[e.pointerId] = {x:e.clientX, y:e.clientY};
@@ -3975,7 +3996,7 @@ lienzoGL.addEventListener('pointermove', function(e){
   pt.x=e.clientX; pt.y=e.clientY;
 });
 lienzoGL.addEventListener('pointerup', function(e){
-  if(pie.activo) return;
+  if(pie.activo || orbitaBloqueada) return;
   if(pt.modo === 'editar'){ edUp(e); pt.modo = null; return; }
   if(pt.mov < 5 && (pt.modo === 'girar' || (ED.activo && pt.modo === 'pan'))){
     if(ED.activo && ED.poner) ponLuz(e);
@@ -5295,7 +5316,8 @@ AD.api = {escena:escena, camara:camara, renderer:renderer, capas:capas, pie:pie,
           GRUPOS_V:GRUPOS_V, LZ:LZ, GIRO:GIRO, SUELO:SUELO, aMundo:aMundo, d2r:d2r,
           entraPie:entrarPie, salirPie:salirPie, salirTour:salirTour, aplicaVista:aplicaVista, eligeVista:eligeVista,
           mueve:mueve, visible:visible, estanciaActiva:estanciaActiva, reloj:reloj,
-          poneCapa:poneCapa, MUEBLE:MUEBLE, MAT:MAT, C0:C0};
+          poneCapa:poneCapa, MUEBLE:MUEBLE, MAT:MAT, C0:C0,
+          orbita:orbita, restauraOrbita:restauraOrbita, bloqueaOrbita:bloqueaOrbita};
 /* C, INT y VERSION cambian al cambiar de version de casa: son getters, no copias.
    Un modulo que leyera una foto de C se quedaria con la planta equivocada. */
 Object.defineProperty(AD.api, 'C', {get:function(){ return C; }});

@@ -68,6 +68,32 @@ AD.piezas.registra({ id:'COC-01-cajon-1', etiqueta:'Cajón de la encimera',
 | G | Muros interiores verde limón + recalibrado de luz diurna | agente G | `modulo/paleta.js` + `demo/herramientas/casa.py` | ☑ | Verde limón por ambiente en el dato (casa.py regenerado) y en runtime; interruptor limón/neutro con material clonado; luz recalibrada (exposición 0,84 · sol 1,33 · hemi 0,56 · relleno 0,14) escalando lo que escribe el visor |
 | — | Integración: `visor.js`, `index.html`, build, deploy, README | coordinator | `visor.js`, `index.html` | ☐ | Todo junto, publicado en GitHub Pages |
 
+## Segunda vuelta (2026-10-20, tarde) — lo que pidió el usuario
+
+| Pedido | Dónde | Estado |
+|---|---|---|
+| Recorrido completo | `modulo/camaras.js` | ☑ Ruta por los vanos: 100,1 m, 46 puntos, 12 paradas, todas las estancias |
+| Cámaras CCTV cinematográfico | `modulo/cctv.js` | ☑ Una por estancia + cuatro de exterior, con cambio de toma, auto y lista |
+| Modo cine con cambio de cámara | `modulo/camaras.js` | ☑ Arreglado `marcaCine()` (no existía) y las alturas con la cota del suelo |
+| Sacar las coordenadas al tocar un muro | `visor.js` | ☑ La ficha dice qué es y dónde; sin chincheta ni «x · z · altura» |
+| Forro exterior azul oscuro | `visor.js` | ☑ `MAT.azul` + `matMuro()`; la piedra se queda para portal, pilares y chimenea |
+| Sombras radio 0,01 | `visor.js` | ☑ `sol.shadow.radius = 0.01` (borde duro) |
+| Luz globo dentro y fuera | `modulo/luz.js` | ☑ Esferas con `PointLight` de alcance corto |
+| Sol a las luces interiores | `modulo/luz.js` | ☑ Segunda direccional sin sombra, en la misma dirección |
+| Luz volumétrica, densidad 0,005 | `modulo/luz.js` | ☑ Conos aditivos desde cada ventana; `ponDensidad()` la ajusta |
+
+Bugs de fondo que salieron al pulir (ver `memoria/errores.md` y las memorias):
+
+- `LUC` se usaba antes de declararse → **tumbaba el visor entero** (bug del upstream).
+- `AD.alListo` era un array y la mitad de los módulos lo llamaba como función.
+- `marcaCine()` no existía → el modo cine no arrancaba.
+- Las alturas de las tomas no sumaban la cota del suelo (12 cm bajas).
+- `distMuro` medía contra la recta: la cámara se metía en un tabique y el
+  recorrido pasaba por una ventana.
+- La barra llamaba `alterna()` y los módulos exponen `alternar()`: no hacía nada.
+- El hub nombraba todas las puertas igual (la clave era un objeto).
+- `salirTour` no estaba en el contrato: el tour no se paraba al abrir la planta.
+
 ## Estado de la entrega (2026-10-20)
 
 El entorno (Android en PRoot) se reinició **diez veces** durante el trabajo y se
