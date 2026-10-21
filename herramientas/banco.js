@@ -187,6 +187,29 @@ console.log('luces              :', luces.join(', ') || 'ninguna');
 console.log('APIs expuestas     :', ['plano','camaras','hub','cocina','audio','carga','paleta','luz','cctv','recorrido','exterior']
             .map(k=>k + (AD[k]?'✓':'✗')).join(' '));
 console.log('hooks registrados  :', AD.hooks.length);
+
+/* ── Abrir cada modo y ver que pasa ──────────────────────────────────────────
+   Un modo que se abre y no hace nada es un fallo silencioso: por eso se
+   comprueba de verdad, no solo que el modulo cargue. */
+console.log('\n== MODOS ==');
+const modos = [
+  ['Cine',      () => AD.camaras && AD.camaras.abrir()],
+  ['CCTV',      () => AD.cctv && AD.cctv.abrir()],
+  ['Recorrido', () => AD.recorrido && AD.recorrido.abrir()],
+  ['Plano 3D',  () => AD.plano && AD.plano.alternar()],
+  ['Hub',       () => AD.hub && AD.hub.abrir()],
+  ['Exterior',  () => AD.exterior && AD.exterior.alterna()],
+  ['Paleta',    () => AD.paleta && AD.paleta.alterna()]
+];
+for (const [nombre, fn] of modos) {
+  try {
+    const r = fn();
+    console.log('  ' + (r === false ? 'NO ABRE ' : 'ok      ') + nombre + (r === false ? '  (devuelve false)' : ''));
+  } catch (e) {
+    console.log('  FALLA   ' + nombre + ': ' + (e && e.message ? e.message : e));
+    fallos.push(nombre + ': ' + (e && e.message ? e.message : e));
+  }
+}
 console.log('fallos             :', fallos.length);
 fallos.forEach(f=>console.log('   ✗', f));
 process.exit(fallos.length ? 1 : 0);

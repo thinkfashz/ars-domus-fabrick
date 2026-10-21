@@ -34,10 +34,14 @@ F.arboles = F.arboles || [];
 X.piscina.losas = X.piscina.losas || [];
 /* El producto es Build House; la casa que se esta mirando conserva su nombre
    (va en el subtitulo) y el de la demo es solo un ejemplo. */
+var BUILD = 'v6';   /* la misma que herramientas/VERSION: si no coinciden, hay que subirlas las dos */
 document.title = 'Build House · ' + F.meta.nombre;
 document.querySelector('#panel .cabecera h1').textContent = 'Build House';
+/* La version va a la vista: si el telefono esta con una cache vieja, se ve
+   aqui mismo (y el aviso del service worker lo explica). */
 document.querySelector('#panel .cabecera .sub').innerHTML =
-  '<b class="casa">' + F.meta.nombre + '</b>' + (F.meta.subtitulo ? ' · ' + F.meta.subtitulo : '');
+  '<b class="casa">' + F.meta.nombre + '</b>' + (F.meta.subtitulo ? ' · ' + F.meta.subtitulo : '') +
+  ' · <b class="casa">' + BUILD + '</b>';
 /* Un enlace opcional bajo el subtítulo: meta.enlace = {texto, url} */
 if(F.meta.enlace){
   var enl = document.createElement('a');

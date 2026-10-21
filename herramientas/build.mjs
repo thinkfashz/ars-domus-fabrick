@@ -27,8 +27,13 @@ if (vinculo) {
   cpSync(vinculo, VINCULO, { recursive: true });
   rmSync(vinculo, { recursive: true, force: true });
 }
+/* La version va en la URL de cada script: si no, un service worker viejo (o el
+   cache del navegador) puede servir un visor.js que ya no existe. Con la
+   version en la URL, ninguna cache coincide y todo sale de la red. */
+const VERSION_BUILD = readFileSync(join(RAIZ, 'herramientas', 'VERSION'), 'utf8').trim();
 const html = readFileSync(join(RAIZ, 'index.html'), 'utf8')
-  .replace('/node_modules/three/build/three.min.js', 'three.min.js');
+  .replace('/node_modules/three/build/three.min.js', 'three.min.js')
+  .replace(/\?v=__BUILD__/g, '?v=' + VERSION_BUILD);
 if (html.includes('node_modules')) throw new Error('index.html aún apunta a node_modules');
 writeFileSync(join(DIST, 'index.html'), html);
 cpSync(join(RAIZ, 'visor.js'), join(DIST, 'visor.js'));
@@ -64,6 +69,8 @@ const faltan = MODULOS.filter(m => !existsSync(join(RAIZ, 'modulo', m + '.js')))
 if (faltan.length) console.warn('  Faltan modulos (el visor arranca igual): ' + faltan.join(', '));
 if (existsSync(join(RAIZ, 'iconos'))) cpSync(join(RAIZ, 'iconos'), join(DIST, 'iconos'), { recursive: true });
 if (existsSync(join(RAIZ, 'icono.svg'))) cpSync(join(RAIZ, 'icono.svg'), join(DIST, 'icono.svg'));
+/* Las cabeceras de Vercel van con la build: la app no se cachea en el CDN. */
+if (existsSync(join(RAIZ, 'herramientas', 'vercel.json'))) cpSync(join(RAIZ, 'herramientas', 'vercel.json'), join(DIST, 'vercel.json'));
 cpSync(join(CASA, 'casa.js'), join(DIST, 'casa.js'));
 if (existsSync(join(CASA, 'texturas'))) cpSync(join(CASA, 'texturas'), join(DIST, 'texturas'), { recursive: true });
 writeFileSync(join(DIST, '.nojekyll'), '');
