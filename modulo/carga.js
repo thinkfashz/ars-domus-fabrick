@@ -103,7 +103,16 @@ function css(){
    '#fab-carga.oculto{display:none!important}'+
    '#fab-carga{position:fixed;inset:0;z-index:120;display:grid;place-items:center;'+
    'background:radial-gradient(120% 90% at 50% 12%,#16211c 0%,#0a0f0c 58%,#050706 100%);'+
-   'color:#e9ede2;font-family:"IBM Plex Sans Condensed",sans-serif;transition:opacity .55s ease}'+
+   'color:#e9ede2;font-family:"IBM Plex Sans Condensed",sans-serif;transition:opacity .55s ease;'+
+   'overflow:hidden}'+
+   /* La retícula del fondo: un plano que se dibuja despacio, como el juego. */
+   '#fab-carga .fondo{position:absolute;inset:-20%;pointer-events:none;opacity:.5;'+
+   'background-image:linear-gradient(rgba(201,239,99,.055) 1px,transparent 1px),'+
+   'linear-gradient(90deg,rgba(201,239,99,.055) 1px,transparent 1px);'+
+   'background-size:46px 46px;animation:fabDeriva 26s linear infinite}'+
+   '@keyframes fabDeriva{from{transform:translate3d(0,0,0)}to{transform:translate3d(-46px,-46px,0)}}'+
+   '#fab-carga .vineta{position:absolute;inset:0;pointer-events:none;'+
+   'background:radial-gradient(70% 55% at 50% 45%,transparent 40%,rgba(5,7,6,.92) 100%)}'+
    '#fab-carga.fuera{opacity:0;pointer-events:none}'+
    '#fab-carga .caja{width:min(440px,88vw);text-align:center;padding:0 18px}'+
    /* La marca: un plano de la casa (corte + hueco) con la linea de altura. */
@@ -132,8 +141,17 @@ function css(){
    'font:700 11px/1 "IBM Plex Sans Condensed",sans-serif;letter-spacing:.2em;text-transform:uppercase;'+
    'opacity:0;pointer-events:none;transition:opacity .3s ease,transform .15s ease}'+
    '#fab-carga .entrar svg{width:22px;height:22px;flex:0 0 22px}'+
-   '#fab-carga .entrar.listo{opacity:1;pointer-events:auto}'+
-   '#fab-carga .entrar:active{transform:scale(.96)}'+
+   '#fab-carga .entrar.listo{opacity:1;pointer-events:auto;animation:fabPulsa 2.4s ease-in-out infinite}'+
+   '@keyframes fabPulsa{0%,100%{box-shadow:0 0 0 0 rgba(201,239,99,.35)}50%{box-shadow:0 0 0 12px rgba(201,239,99,0)}}'+
+   '#fab-carga .entrar:active{transform:scale(.96);animation:none}'+
+   /* El cartel de nivel, como el que anuncia un nivel de juego. */
+   '#fab-carga .nivel{margin-top:20px;display:inline-flex;align-items:center;gap:9px;'+
+   'padding:6px 12px;border:1px solid rgba(201,239,99,.3);border-radius:2px;'+
+   'font:500 9px/1 "IBM Plex Mono",monospace;letter-spacing:.26em;text-transform:uppercase;color:#c9ef63}'+
+   '#fab-carga .nivel i{display:block;width:5px;height:5px;background:#c9ef63;border-radius:50%;'+
+   'animation:fabParpadeo 1.8s infinite}'+
+   '@keyframes fabParpadeo{0%,60%{opacity:1}70%,100%{opacity:.2}}'+
+   '#fab-carga .pista b{color:#c9ef63;font-weight:600}'+
    '#fab-carga .cuenta{margin-top:10px;min-height:1.2em;font:500 10px/1.2 "IBM Plex Mono",monospace;'+
    'letter-spacing:.16em;text-transform:uppercase;color:#5f6c5c}'+
    '@media (prefers-reduced-motion:reduce){#fab-carga .riel i{transition:none}#fab-carga{transition:none}}';
@@ -194,8 +212,11 @@ function crea(){
   addEventListener('error', error, true);
   var d = document.createElement('div');
   d.id = 'fab-carga';
+  var nombre = (window.CASA && window.CASA.meta && window.CASA.meta.nombre) || 'la casa';
   d.innerHTML =
+   '<div class="fondo"></div><div class="vineta"></div>'+
    '<div class="caja">'+
+     '<div class="nivel"><i></i>Nivel 01 · '+ String(nombre).replace(/</g,'&lt;') +'</div>'+
      '<svg class="logo" viewBox="0 0 92 92" aria-label="Build House">'+
        '<path class="casa" d="M12 78V30L46 14l34 16v48z"/>'+
        '<path class="casa" d="M46 14v64M12 46h68"/>'+
