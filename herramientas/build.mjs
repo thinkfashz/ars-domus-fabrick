@@ -4,6 +4,7 @@
 // Sin servidor no hay cambios.json: lo que se mueve en «Mover objetos» se queda en el navegador y se
 // copia con «Copiar cambios». DOMINIO=… escribe el CNAME (sin él, no hay dominio propio).
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import vm from 'node:vm';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,10 +39,29 @@ cpSync(join(RAIZ, 'sw.js'), join(DIST, 'sw.js'));
 if (existsSync(join(RAIZ, 'modulo'))) {
   cpSync(join(RAIZ, 'modulo'), join(DIST, 'modulo'), { recursive: true });
 }
-// El index.html los carga todos: si falta alguno, avisamos en vez de subir un visor roto.
-const MODULOS = ['paleta', 'cocina', 'plano', 'camaras', 'hub', 'audio', 'carga', 'fabrick'];
+/* Red de seguridad: un modulo a medias (un agente cortado por un reinicio)
+   no puede publicarse. Se parsea cada archivo y, si alguno no compila, se avisa
+   con nombre y linea: es el error que mas veces ha tumbado el visor. */
+const MODULOS = ['paleta', 'cocina', 'plano', 'camaras', 'hub', 'audio', 'carga',
+                 'luz', 'cctv', 'recorrido', 'exterior', 'fabrick'];
+const rotos = [];
+for (const m of MODULOS) {
+  const f = join(RAIZ, 'modulo', m + '.js');
+  if (!existsSync(f)) continue;
+  try {
+    new vm.Script(readFileSync(f, 'utf8'), { filename: m + '.js' });
+  } catch (e) {
+    rotos.push(m + '.js: ' + (e && e.message ? e.message.split('\n')[0] : e));
+  }
+}
+if (rotos.length) {
+  console.error('\n  MODULOS ROTOS (no se publican):');
+  rotos.forEach(r => console.error('   x ' + r));
+  process.exitCode = 1;
+}
+// Si falta un modulo, el visor arranca igual (el index.html avisa por consola).
 const faltan = MODULOS.filter(m => !existsSync(join(RAIZ, 'modulo', m + '.js')));
-if (faltan.length) console.warn('Faltan modulos: ' + faltan.join(', ') + ' (el visor arranca igual)');
+if (faltan.length) console.warn('  Faltan modulos (el visor arranca igual): ' + faltan.join(', '));
 if (existsSync(join(RAIZ, 'iconos'))) cpSync(join(RAIZ, 'iconos'), join(DIST, 'iconos'), { recursive: true });
 if (existsSync(join(RAIZ, 'icono.svg'))) cpSync(join(RAIZ, 'icono.svg'), join(DIST, 'icono.svg'));
 cpSync(join(CASA, 'casa.js'), join(DIST, 'casa.js'));
