@@ -133,3 +133,60 @@ node herramientas/build.mjs
 El navegador headless con WebGL por software **tumba el renderizador en este
 teléfono** (`GPU state invalid after WaitForGetOffsetInRange`): no sirve para
 verificar. El banco en Node sí.
+
+
+---
+
+## 004 — La barra se quedaba vacía si el core no llegaba al final (2026-10-21)
+
+**Síntoma**: en el teléfono, el botón de «Cine» no aparecía (y el de «Recorrido»
+tampoco), y el usuario decía que "el modo cine no carga".
+
+**Causa raíz**: la barra se pintaba **solo** dentro del aviso de "el visor está
+listo" (`AD.alListo`), que el core lanza **al final** de su IIFE. Si algo falla
+antes — un contexto WebGL que no se puede crear, por ejemplo — el aviso nunca
+llega, la barra nunca se pinta y solo quedan los botones que registrando sus
+propios módulos al cargarse. La app parecía no tener botones.
+
+**Fix**: la barra se pinta **en el acto**, con los módulos que ya estén
+cargados, y otra vez cuando el core avisa. Además, la barra registra ella misma
+los nueve módulos conocidos (Plano, Cine, Control, Color, Sonido, CCTV,
+Recorrido, Exterior, Luz): si un módulo falta, no hay botón, pero si el core
+se cae, los botones siguen ahí.
+
+**Cómo evitarlo**: una interfaz no puede depender de que el motor termine bien.
+La barra es del usuario: se pinta siempre, y cada botón comprueba su módulo al
+pulsarse.
+
+---
+
+## 005 — Un service worker viejo servía un visor.js que ya no existía (2026-10-21)
+
+**Síntoma**: en el teléfono, la pestaña decía «Maqueta de El Olivar» (el título
+antiguo) y salía `Uncaught ReferenceError: varJedida is not defined — visor.js:4706`.
+Ese `varJedida` **no estaba en ningún commit, ni en el upstream, ni en el
+servido**: salía de un `visor.js` cacheado de un build que ya no existía.
+
+**Causa raíz**: el service worker servía **cache primero**. Aunque la página
+nueva se descargara, el SW entregaba el `index.html` y el `visor.js` cacheados.
+Un service worker es una caché con permisos: si guarda lo equivocado, **esconde
+el arreglo** hasta que se limpia a mano.
+
+**Fix**, tres capas:
+
+1. **La versión va en la URL de cada script** (`visor.js?v=v6`): ninguna caché
+   coincide con esa URL, así que todo sale de la red. La inyecta el build desde
+   `herramientas/VERSION`.
+2. **El service worker pasa el esqueleto a red primero** (index, visor, casa,
+   módulos, three.js) y solo cae a la caché si no hay red. Las texturas siguen
+   en caché primero, porque no cambian.
+3. **La versión se ve en el panel**: si el teléfono va viejo, se ve de un
+   vistazo, sin adivinar.
+
+**Cómo evitarlo**: cachear el esqueleto de una app es una decisión con
+consecuencias: si el usuario no sabe limpiar la caché, la app queda clavada en
+un error que ya no existe en el código. O red primero, o versión en la URL.
+
+**Y una más**: para el usuario Affected, la solución fue además **un origen
+nuevo** (`build-house-fabrick.vercel.app`): otro host es otro registro de
+service workers, así que la caché venenosa no aplica.
