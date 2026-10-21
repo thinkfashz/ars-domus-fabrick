@@ -94,6 +94,28 @@ Bugs de fondo que salieron al pulir (ver `memoria/errores.md` y las memorias):
 - El hub nombraba todas las puertas igual (la clave era un objeto).
 - `salirTour` no estaba en el contrato: el tour no se paraba al abrir la planta.
 
+## Tercera vuelta (2026-10-21) — Build House
+
+| Pedido | Dónde | Estado |
+|---|---|---|
+| Renombrar a **Build House** | `visor.js`, `index.html`, `manifest.webmanifest` | ☑ El producto se llama Build House; la casa conserva su nombre en el subtítulo |
+| Logo y carga de videogame | `modulo/carga.js`, `icono.svg` | ☑ Logo propio (corte de planta), retícula de fondo, cartel «Nivel 01», barra por segmentos, botón con pulso |
+| Recorrido a **altura de persona** | `modulo/recorrido.js` | ☑ 1,62 m sobre el suelo terminado (verificado 1,990 m), FOV 72° horizontal |
+| Recorrido por **todas las estancias** | `modulo/recorrido.js` | ☑ Por el grafo de vanos, puertas cruzadas de perfil, 0 muestras dentro de un muro |
+| Cámaras **cinematográficas** y de **realidad** | `modulo/cctv.js` | ☑ 32 de cine (1,62 m, lente corta) y 25 de realidad (domo alto, FOV amplio) |
+| Cámaras por la casa **y el terreno** | `modulo/cctv.js` | ☑ Cada una nacida de un dato: puerta, portón, camino, explanada, pérgola, piscina, huerto, caseta |
+| **Iluminación exterior** diseñada | `modulo/exterior.js` | ☑ Farolillos, weir, pérgola, caseta y portalón con intensidades de proyecto; huerto y era sin luz |
+| **Luz volumétrica** para el motor | `modulo/exterior.js` + `modulo/luz.js` | ☑ Densidad por hora (0,004 / 0,007 / 0,010) y nunca se toca la exposición |
+
+Bugs de fondo que aparecieron en esta vuelta:
+
+- **`shadow.radius` no hacía nada**: el visor usaba `PCFSoftShadowMap`, donde el radio
+  se ignora. El «radio 0,01» era una promesa falsa: ahora es `PCFShadowMap` y el radio
+  **sí** manda.
+- **`C0.exterior` no existe**: el bloque exterior vive en `window.CASA.exterior`.
+- Las luces de fuera y las de globo **bajan en móvil** (4 y 3): con el reparto del
+  visor y las de relleno por estancia se llegaban a treinta puntuales.
+
 ## Estado de la entrega (2026-10-20)
 
 El entorno (Android en PRoot) se reinició **diez veces** durante el trabajo y se
