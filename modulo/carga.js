@@ -87,6 +87,7 @@ function css(){
   var s = document.createElement('style');
   s.id = 'fab-carga-css';
   s.textContent =
+   '#fab-carga.oculto{display:none!important}'+
    '#fab-carga{position:fixed;inset:0;z-index:120;display:grid;place-items:center;'+
    'background:radial-gradient(120% 90% at 50% 12%,#16211c 0%,#0a0f0c 58%,#050706 100%);'+
    'color:#e9ede2;font-family:"IBM Plex Sans Condensed",sans-serif;transition:opacity .55s ease}'+
@@ -155,6 +156,7 @@ function crea(){
        '<span>Tocá para entrar</span></button>'+
      '<div class="cuenta"></div>'+
    '</div>';
+  d.classList.add('oculto');
   document.body.appendChild(d);
   EST.el = d;
   EST.barra = d.querySelector('.riel i');
@@ -251,6 +253,9 @@ function listo(){
   EST.pctTxt.textContent = '100 %';
   EST.btn.classList.add('listo');
   if(EST.el) EST.el.classList.add('puede-entrar');
+  /* Si la carga fue rapida, la pantalla nunca se llego a ver: se entra ya.
+     Una pantalla de carga que tapa una escena lista es una espera tonta. */
+  if(EST.el && EST.el.classList.contains('oculto')){ setTimeout(function(){ entra(); }, 120); return; }
   /* La puerta se ofrece sola a los 7 s: nadie debe esperar por un botón,
      pero el que quiera tocar la puerta, toca. */
   var reducir = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -291,15 +296,11 @@ function entra(){
     }
   }catch(e){}
   try{ if(screen && screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(function(){}); }catch(e){}
-  /* El audio necesita un gesto: este toque es el gesto. */
-  if(AD.audio && !AD.audio.suena()){
-    var b = document.createElement('button');
-    b.type = 'button'; b.textContent = 'Activar sonido';
-    b.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:60;min-height:44px;padding:0 16px;'+
-      'background:rgba(11,15,12,.85);color:#c9ef63;border:1px solid rgba(201,239,99,.45);border-radius:4px;'+
-      'font:600 11px/1 "IBM Plex Sans Condensed",sans-serif;letter-spacing:.1em;text-transform:uppercase;cursor:pointer';
-    b.addEventListener('click', function(){ if(AD.audio.activa()) b.remove(); });
-    document.body.appendChild(b);
+  /* El audio necesita un gesto, y este toque es el gesto: si el usuario lo habia
+     dejado activado, se arranca aqui. El boton lo pone la barra de Fabrick,
+     no un boton suelto que se le encima en el movil. */
+  if(AD.audio && !AD.audio.suena() && AD.audio.quiereSonido && AD.audio.quiereSonido()){
+    try{ AD.audio.activa(); }catch(e){}
   }
   if(AD.refrescaBarra) AD.refrescaBarra();
 }
@@ -311,6 +312,11 @@ AD.carga = {progreso: progreso, listo: listo, entra: entra};
 function arranca(){
   EST.t0 = Date.now();
   crea();
+  /* Si a los 800 ms la casa ya esta, no se muestra la pantalla de carga:
+     solo aparece cuando de verdad hay que esperar. */
+  setTimeout(function(){
+    if(!EST.abierto && !EST.listo && EST.el) EST.el.classList.remove('oculto');
+  }, 800);
   /* El reloj de la carga: cada 300 ms se mira qué falta por llegar. */
   if(!EST.reloj) EST.reloj = setInterval(function(){
     if(EST.abierto){ clearInterval(EST.reloj); EST.reloj = null; return; }

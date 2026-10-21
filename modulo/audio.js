@@ -164,6 +164,10 @@ AD.audio = {
     return EST.vol;
   },
   suena: function(){ return EST.on; },
+  /* El usuario dejo el sonido activado la ultima vez: se respeta al entrar. */
+  quiereSonido: function(){
+    try{ return localStorage.getItem(CLAVE) === '1'; }catch(e){ return false; }
+  },
   ambiente: ambiente
 };
 
@@ -182,18 +186,10 @@ function arranca(){
   if(AD.onFrame) AD.onFrame(function(){ ambiente(fuera()); });
   /* Si el usuario ya había dado permiso, se respeta… pero el navegador puede
      haber bloqueado el audio en esta carga: se deja el botón como puerta. */
-  try{
-    if(localStorage.getItem(CLAVE) === '1'){
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = 'Activar sonido';
-      b.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:60;min-height:44px;padding:0 16px;'+
-        'background:#0b0f0c;color:#c9ef63;border:1px solid rgba(201,239,99,.45);border-radius:4px;'+
-        'font:600 11px/1 "IBM Plex Sans Condensed",sans-serif;letter-spacing:.1em;text-transform:uppercase;cursor:pointer';
-      b.addEventListener('click', function(){ if(activa()) b.remove(); });
-      document.body.appendChild(b);
-    }
-  }catch(e){}
+  /* NO se crea ningun boton flotante: la barra de Fabrick ya tiene el boton de
+     sonido, y en el movil la barra va abajo a la derecha, donde un boton
+     suelto se le encima. El gesto que desbloquea el audio es el toque de
+     entrada en la casa. */
 }
 if(AD.alListo) AD.alListo(function(){ setTimeout(arranca, 200); });
 if(document.readyState === 'complete') setTimeout(arranca, 200);

@@ -7,10 +7,17 @@ var AD = window.AD || (window.AD = {});
 AD.hooks = AD.hooks || [];
 AD.piezas = AD.piezas || {items: [], registra: function(p){ AD.piezas.items.push(p); }};
 AD.onFrame = AD.onFrame || function(fn){ AD.hooks.push(fn); return fn; };
-/* Un modulo puede pedir que se avise cuando el visor ya esta listo. */
+/* Un modulo puede pedir que se avise cuando el visor ya esta listo.
+   OJO: AD.alListo se llama COMO FUNCION (AD.alListo(fn)) y AD.avisaListo es su
+   alias. Antes era un array y la mitad de los modulos lo llamaba como funcion:
+   eso los dejaba sin arrancar. */
 AD.listo = AD.listo || false;
-AD.alListo = AD.alListo || [];
-AD.avisaListo = function(fn){ if(AD.listo) fn(); else AD.alListo.push(fn); };
+AD.pendientes = AD.pendientes || [];
+AD.alListo = function(fn){
+  if(typeof fn !== 'function') return;
+  if(AD.listo) fn(); else AD.pendientes.push(fn);
+};
+AD.avisaListo = AD.alListo;
 
 /* Ars Domus: visor 3D de una casa. Lee window.CASA (casa.js; window.FINCA también vale) y usa three.js r128
    (global THREE). Todo lo que es de una casa concreta viene en los datos; aquí solo está cómo se dibuja. */
@@ -3486,6 +3493,37 @@ escena.traverse(function(o){
 });
 pad.castShadow = false; fuera.castShadow = false;
 
+/* ── Luz: preferencias del navegador. Este bloque va ANTES de que se usen:
+   antes estaba mas abajo y `LUC.sombras` se leia antes de declararse,
+   lo que tumbaba el visor entero con un TypeError. ── */
+var SOLB = {s:0.5, h:0.3};                                    // intensidades crudas de sol y cielo
+var PRELUC = {
+  natural:   {exp:1.00, rebote:1.00, niebla:1.00},
+  suave:     {exp:1.10, rebote:1.55, niebla:0.75},
+  dramatico: {exp:1.22, rebote:0.50, niebla:1.30},
+  nocturno:  {exp:1.45, rebote:0.30, niebla:0.55}
+};
+var LUC = {exp:1.00, rebote:1.00, niebla:1.00, sombras:true, pre:'natural'};
+function leeLuz(){
+  try{ var s = JSON.parse(localStorage.getItem('arsdomus-luz') || 'null');
+       if(s) for(var k in LUC) if(s[k] !== undefined) LUC[k] = s[k]; }catch(e){}
+}
+function guardaLuz(){ try{ localStorage.setItem('arsdomus-luz', JSON.stringify(LUC)); }catch(e){} }
+leeLuz();
+function aplicaLuz(){
+  renderer.toneMappingExposure = LUC.exp;
+  sol.intensity = SOLB.s;
+  hemi.intensity = SOLB.h * LUC.rebote;                      // el rebote es la luz del cielo y del suelo
+  relleno.intensity = 0.07 * LUC.rebote;
+  var n = Math.max(40, 220/LUC.niebla);
+  escena.fog.near = n; escena.fog.far = Math.max(n+60, 700/LUC.niebla);
+  // cambiar las sombras obliga a recompilar los materiales: por eso solo se toca si cambia
+  if(renderer.shadowMap.enabled !== LUC.sombras){
+    renderer.shadowMap.enabled = LUC.sombras;
+    escena.traverse(function(o){ if(o.material) o.material.needsUpdate = true; });
+  }
+}
+
 /* ===================== capas (UI) ===================== */
 var DEF = [
   ['terreno','Terreno y parcela','#c9b18e'],
@@ -3613,33 +3651,6 @@ function actualizarSol(){
    Lo que la posición del sol no decide: cuánto se ve quemado lo claro, cuánto rebota la luz
    del cielo y del suelo, y cuánta bruma hay. Se guarda en el navegador, así que la elección
    se mantiene al cerrar y al volver. */
-var SOLB = {s:0.5, h:0.3};                                    // intensidades crudas de sol y cielo
-var PRELUC = {
-  natural:   {exp:1.00, rebote:1.00, niebla:1.00},
-  suave:     {exp:1.10, rebote:1.55, niebla:0.75},
-  dramatico: {exp:1.22, rebote:0.50, niebla:1.30},
-  nocturno:  {exp:1.45, rebote:0.30, niebla:0.55}
-};
-var LUC = {exp:1.00, rebote:1.00, niebla:1.00, sombras:true, pre:'natural'};
-function leeLuz(){
-  try{ var s = JSON.parse(localStorage.getItem('arsdomus-luz') || 'null');
-       if(s) for(var k in LUC) if(s[k] !== undefined) LUC[k] = s[k]; }catch(e){}
-}
-function guardaLuz(){ try{ localStorage.setItem('arsdomus-luz', JSON.stringify(LUC)); }catch(e){} }
-leeLuz();
-function aplicaLuz(){
-  renderer.toneMappingExposure = LUC.exp;
-  sol.intensity = SOLB.s;
-  hemi.intensity = SOLB.h * LUC.rebote;                      // el rebote es la luz del cielo y del suelo
-  relleno.intensity = 0.07 * LUC.rebote;
-  var n = Math.max(40, 220/LUC.niebla);
-  escena.fog.near = n; escena.fog.far = Math.max(n+60, 700/LUC.niebla);
-  // cambiar las sombras obliga a recompilar los materiales: por eso solo se toca si cambia
-  if(renderer.shadowMap.enabled !== LUC.sombras){
-    renderer.shadowMap.enabled = LUC.sombras;
-    escena.traverse(function(o){ if(o.material) o.material.needsUpdate = true; });
-  }
-}
 /* Interruptores de luz: los cuatro ambientes y los tres deslizadores. Mover un deslizador
    desmarca el ambiente (ya no encaja con ninguno), pero la elección se guarda igual. */
 (function(){
@@ -5282,5 +5293,6 @@ Object.defineProperty(AD.api, 'C', {get:function(){ return C; }});
 Object.defineProperty(AD.api, 'INT', {get:function(){ return INT; }});
 Object.defineProperty(AD.api, 'VERSION', {get:function(){ return VERSION; }});
 AD.listo = true;
-AD.alListo.forEach(function(fn){ try{ fn(); }catch(e){ console.warn('AD', e); } });
+var pendientes = AD.pendientes.splice(0);
+pendientes.forEach(function(fn){ try{ fn(); }catch(e){ console.warn('AD', e); } });
 })();
