@@ -35,6 +35,7 @@ function el(tag){
     querySelectorAll(sel){ return buscar(this, sel, false); },
     getBoundingClientRect(){ return {left:0,top:0,width:390,height:844,right:390,bottom:844}; },
     focus(){}, blur(){}, click(){ if(this._ev && this._ev.click) this._ev.click({}); },
+    getContext(){ return ctx2d(); },
     setPointerCapture(){}, releasePointerCapture(){}
   };
   e.classList.add = e.classList.add.bind(e.classList);
@@ -73,6 +74,23 @@ function buscar(raiz, sel, uno){
   })(raiz);
   if(uno) return encontrado;
   return encontrado ? [encontrado] : [];
+}
+/* Contexto 2D de mentira: solo hace falta que no rompa. */
+function ctx2d(){
+  if(ctx2d._c) return ctx2d._c;
+  var noop = function(){};
+  var c = {fillStyle:'', strokeStyle:'', lineWidth:1, font:'', textAlign:'', textBaseline:'',
+    globalAlpha:1, globalCompositeOperation:'',
+    createLinearGradient:function(){ return {addColorStop:noop}; },
+    createRadialGradient:function(){ return {addColorStop:noop}; },
+    measureText:function(t){ return {width:(t||'').length*8}; },
+    getImageData:function(){ return {data:[]}; },
+    putImageData:noop, setTransform:noop, resetTransform:noop};
+  ['fillRect','clearRect','strokeRect','beginPath','closePath','moveTo','lineTo','arc','arcTo',
+   'fill','stroke','save','restore','translate','rotate','scale','fillText','strokeText',
+   'drawImage','setLineDash','quadraticCurveTo','bezierCurveTo','clip','rect'].forEach(function(k){ c[k] = noop; });
+  ctx2d._c = c;
+  return c;
 }
 const body = el('body');
 const head = el('head');
@@ -129,7 +147,7 @@ AD.api = {
 };
 
 /* ── Cargar los módulos y capturar fallos ────────────────────────────────── */
-const modulos = ['paleta','cocina','plano','camaras','hub','audio','carga','fabrick'];
+const modulos = ['paleta','cocina','plano','camaras','hub','audio','carga','luz','cctv','fabrick'];
 const fallos = [];
 for(const m of modulos){
   const f = path.join(MOD, m + '.js');

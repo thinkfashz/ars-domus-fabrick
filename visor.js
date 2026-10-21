@@ -224,7 +224,8 @@ sol.castShadow = true; sol.shadow.mapSize.set(TACTIL?2048:4096, TACTIL?2048:4096
 var sc = sol.shadow.camera;
 sc.left=-75; sc.right=75; sc.top=95; sc.bottom=-95; sc.near=1; sc.far=460;
 sol.shadow.bias = -0.0006; sol.shadow.normalBias = 0.03;
-sol.shadow.radius = TACTIL ? 1 : 2;                  // sombra algo más difusa que la normal
+sol.shadow.radius = 0.01;                               // sombra marcada: borde duro, sin difuminado
+sol.shadow.blurSamples = 8;                             // (solo PCFSoft lo usa; PCF no)
 escena.add(sol); escena.add(sol.target);
 var relleno = new THREE.DirectionalLight('#dce6ef',0.12);
 relleno.position.set(-40,32,44); escena.add(relleno);
@@ -291,6 +292,7 @@ var MAT = {
   cesped:    lam({color:'#ffffff', map:tex('cesped',1.2,1.2)}),
   paret:     lam({color:'#ffffff', map:tex('paret',8,1)}),
   piedra:    lam({color:'#ffffff', map:tex('piedra',1.45,1.1)}),
+  azul:      lam({color:'#26364f', map:tex('piedra',1.45,1.1)}),   // forro exterior, pintura azul oscuro
   mares:     lam({color:'#d9c7a2'}),
   blanco:    lam({color:'#eeeae1'}),
   crema:     lam({color:'#ece2cc'}),
@@ -369,7 +371,12 @@ function grupoMuro(u0, v0, u1, v1){
   return {g:g, L:Math.hypot(u1-u0, v1-v0)};
 }
 /* Cada muro con su ficha y su ID (W-NNN); los trozos de un mismo muro comparten ficha. */
-var NOMBRE_MURO = {piedra:'Muro de piedra', blanco:'Muro encalado', crema:'Muro crema', interior:'Tabique interior'};
+var NOMBRE_MURO = {piedra:'Forro de fachada (azul oscuro)', blanco:'Forro de fachada (azul oscuro)',
+                   crema:'Forro de fachada (azul oscuro)', interior:'Tabique interior'};
+/* El forro exterior va en pintura azul oscuro. La piedra suelta (portal, pilares,
+   caseta, chimenea) se queda como esta: el contraste es lo que hace que la casa
+   se lea. */
+function matMuro(k){ return (k === 'piedra' || k === 'blanco' || k === 'crema') ? MAT.azul : MAT[k]; }
 function construyeMuros(){ var fichas = {}; C.muros.forEach(function(w){
   var r = grupoMuro(w[0],w[1],w[2],w[3]), e = w[4], id = w[8] || null;
   var info = id ? fichas[id] = fichas[id] || {tipo:'Muro', id:id, nombre:NOMBRE_MURO[w[7]] || 'Muro', largo:0,
@@ -377,7 +384,7 @@ function construyeMuros(){ var fichas = {}; C.muros.forEach(function(w){
     nota:C.notaMuros || null} : INFO_CASA;
   // medio espesor de más en cada punta para cerrar las esquinas, salvo donde empieza un hueco:
   // ahí se metería en él y, por dentro, asomaría como un marco de piedra
-  reg(malla(pano(bordeHueco(w[0], w[1]) ? 0 : -e/2, r.L + (bordeHueco(w[2], w[3]) ? 0 : e/2), 0, w[5], w[6], e), MAT[w[7]], r.g), info);
+  reg(malla(pano(bordeHueco(w[0], w[1]) ? 0 : -e/2, r.L + (bordeHueco(w[2], w[3]) ? 0 : e/2), 0, w[5], w[6], e), matMuro(w[7]), r.g), info);
 }); }
 function bordeHueco(u, v){
   return C.huecos.some(function(h){ return Math.hypot(h[0]-u, h[1]-v) < 0.03 || Math.hypot(h[2]-u, h[3]-v) < 0.03; });
@@ -4065,16 +4072,17 @@ var hudPunto = document.getElementById('hud-punto'), txtPunto = '';
 var chincheta = new THREE.Group(); chincheta.visible = false; escena.add(chincheta);
 malla(new THREE.ConeGeometry(0.12, 0.5, 12), lam({color:'#d6452f', emissive:'#6b1a10'}), chincheta, 0, 0.25, 0).rotation.x = Math.PI;
 malla(new THREE.SphereGeometry(0.14, 12, 8), lam({color:'#d6452f', emissive:'#6b1a10'}), chincheta, 0, 0.55, 0);
+/* La coordenada del punto tocado ya no se muestra. Antes, al tocar cualquier muro
+   salia una chincheta roja y un «x · z · altura» en la ficha: era ruido para
+   quien solo quiere ver la casa. La ficha del objeto sigue diciendo que es y
+   donde esta; la chincheta y el copiador quedan apagados. */
 function ponPunto(p){
-  chincheta.visible = !!p; hudPunto.hidden = !p;
+  chincheta.visible = false; hudPunto.hidden = true;
   if(!p) return;
   chincheta.position.copy(p);
   var f = function(v){ return v.toFixed(1); };
-  // la altura, sobre la explanada de la parcela (SUELO): la del suelo de la casa es 0,1
   var h = Math.max(0, p.y - SUELO);
   txtPunto = '(' + f(p.x) + ', ' + f(p.z) + ', ' + f(h) + ')';
-  hudPunto.textContent = 'x ' + f(p.x).replace('.', ',') + ' · z ' + f(p.z).replace('.', ',') + ' · altura ' + f(h).replace('.', ',') + ' m';
-  hudPunto.title = 'Copiar la coordenada ' + txtPunto;
 }
 hudPunto.addEventListener('click', function(){
   try{ navigator.clipboard.writeText(txtPunto).then(function(){
