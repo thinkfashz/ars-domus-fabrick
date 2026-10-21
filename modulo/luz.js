@@ -26,7 +26,7 @@ var DENSIDAD = 0.005;          // la que pediste
 var MAX_HACES = 10;            // conos volumetricos vivos a la vez (rendimiento)
 var MAX_GLOBOS = 8;            // bombillas de globo con PointLight
 
-var EST = {sol:null, solInterior:null, haces:[], globos:[], hecho:false};
+var EST = {sol:null, solInterior:null, haces:[], globos:[], hecho:false, encendida:true};
 
 function api(){ return AD.api || null; }
 function T(){ return window.THREE || null; }
@@ -213,6 +213,16 @@ AD.luz = {
   globos: function(){ return EST.globos.length; },
   haces: function(){ return EST.haces.length; },
   enciende: enciende,
+  /* Encendido o apagado: los globos se apagan y los haces volumetricos
+     desaparecen. De noche, sin esto, la casa se ve igual que de dia. */
+  encendida: function(){ return EST.encendida; },
+  alterna: function(){
+    EST.encendida = !EST.encendida;
+    enciende(EST.encendida);
+    if(EST.matHaz) EST.matHaz.visible = EST.encendida;
+    if(AD.refrescaBarra) AD.refrescaBarra();
+    return EST.encendida;
+  },
   aplica: function(){
     creaSolInterior();
     creaGlobos();
@@ -229,6 +239,13 @@ function monta(){
   EST.hecho = true;
   AD.luz.aplica();
   if(AD.onFrame) AD.onFrame(orientaHaces);
+  /* Boton en la barra de Fabrick: la luz se enciende y se apaga. */
+  if(AD.boton){
+    AD.boton({id:'luz', etiqueta:'Luz', icono:'lámpara',
+      alPulsar:function(){ AD.luz.alterna(); },
+      activo:function(){ return AD.luz.encendida(); }});
+    if(AD.pintaBarra) AD.pintaBarra();
+  }
   return true;
 }
 var intentos = 0;
