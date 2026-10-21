@@ -58,12 +58,47 @@ abajo en móvil): Plano · Cine · CCTV · Control · Color · Sonido.
    degradado. La **densidad es 0,005**: se insinúa. `AD.luz.ponDensidad(0.03)`
    la convierte en humo.
 
-### Cámaras CCTV
+### Cámaras CCTV — dos niveles
 
-Un muro de cámaras, pero de cine: letterbox, REC, reloj y **cambio de toma** con
-◀ ▶, en automático cada 8 s, o eligiendo en la lista. Las cámaras **se sacan de
-los datos**: una por estancia (en la esquina, a 2,60 m, mirando al centro) y
-cuatro de exterior. CCTV y modo cine son excluyentes.
+Un muro de cámaras, pero de cine. El interruptor cambia el nivel:
+
+| Nivel | Altura | FOV horizontal | Carácter |
+|---|---|---|---|
+| **Cine** | **1,62 m** (altura de persona) | **35–55°** (corto: encuadre de película) | Letterbox, rótulo de plano, travelling lento |
+| **Realidad** | **2,40–2,70 m** (domo de seguridad) | **70–90°** (amplio) | Marca de tiempo, identificador, cuadrícula, sin rótulos |
+
+Las cámaras **se sacan de los datos**: una o dos por estancia según su tamaño, y
+el exterior desde la fachada, el porche, la entrada, la cochera, la pérgola, la
+piscina, el huerto y el camino. Cambio de toma con ◀ ▶, en automático cada 8 s, o
+eligiendo en la **cuadrícula de miniaturas** (SVG, no renderizados WebGL: veinte
+escenas a la vez no caben en un móvil).
+
+### El recorrido digital
+
+Recorre **todas** las estancias, una por una, a **1,62 m del suelo terminado**
+(la altura de los ojos) y con el **campo de visión de una persona: 72° en
+horizontal** (convertido a vertical con `2·atan(tan(h/2)/aspect)`, límites
+50–94). En vertical de móvil el horizontal real queda en ~52,7°, y el rótulo lo
+dice, para que nadie piense que es un teleobjetivo.
+
+- Las **puertas se abren solas** al acercarse (menos de 2,9 m).
+- El recorrido va **por los vanos**: dos estancias están conectadas si comparten
+  borde y en ese borde hay un hueco pasable. Si se llega a un callejón sin salida,
+  se vuelve por donde se vino.
+- **Una parada por estancia**, 1,7 s, con el nombre y una línea de dato.
+- El punto de mira va con **rumbo suave** (miras un poco por delante y otro
+  poco por detrás): los giros no dan latigazo.
+- Al cerrarlo, la cámara vuelve **exactamente** donde estaba (`restauraOrbita`).
+
+### La finca de noche
+
+La iluminación exterior sale de los datos: los **farolillos del camino** que ya
+tenía la casa, la **weir de la piscina** en turquesa bajo el agua, la pérgola,
+la caseta y el portalón. Cada lámpara ilumina **su entorno y nada más**: alcance
+corto (2–6 m), intensidad baja. El huerto y la era se quedan **sin una sola
+luz**: de noche, la oscuridad es lo correcto. La **densidad del volumétrico**
+cambia con la hora (0,004 de día, 0,010 de noche) y la **exposición nunca se
+toca**: si la noche se ve quemada, el arreglo es bajar intensidades.
 
 ## Arquitectura: datos primero, 3D que solo dibuja
 
@@ -80,7 +115,9 @@ modulo/            las funciones nuevas, en módulos sueltos
   audio.js         música y ambiente (WebAudio)
   carga.js         pantalla de carga
   luz.js           sol interior, luz globo y luz volumétrica (densidad 0,005)
-  cctv.js          cámaras de vigilancia con cambio de toma
+  cctv.js          cámaras en dos niveles (cine y realidad) con cambio de toma
+  recorrido.js     recorrido digital a altura de persona por todas las estancias
+  exterior.js      iluminación de la finca de noche y Environments de luz
   fabrick.js       la barra que junta a todos
 memoria/           la memoria de cada agente: qué encontró, qué decidió, qué falta
 TAREAS.md          el tablero de tareas
