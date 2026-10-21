@@ -24,7 +24,10 @@ var AD = window.AD || (window.AD = {});
 
 var DENSIDAD = 0.005;          // la que pediste
 var MAX_HACES = 10;            // conos volumetricos vivos a la vez (rendimiento)
-var MAX_GLOBOS = 8;            // bombillas de globo con PointLight
+/* En un movil se Bajan a tres: el reparto del visor, las luces de relleno por
+   estancia y las de fuera ya son muchas, y cada PointLight cuesta en el shader. */
+var TACTIL = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || 'ontouchstart' in window;
+var MAX_GLOBOS = TACTIL ? 3 : 6;   // bombillas de globo con PointLight
 
 var EST = {sol:null, solInterior:null, haces:[], globos:[], hecho:false, encendida:true};
 

@@ -204,7 +204,11 @@ renderer.toneMappingExposure = 1.0;
    táctiles el mapa va a 2048 en vez de 4096. Se pueden apagar con el interruptor de «Luz». */
 var TACTIL = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 renderer.shadowMap.enabled = QS.has('sombras') || !QS.has('nosombras');
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+/* PCF (no PCFSoft): en PCFSoft el radio de la sombra NO se usa, asi que pedir
+   un borde duro con radio 0,01 era pedirle algo al filtro equivocado. Con PCF
+   el radio si manda, y 0,01 da un borde definido, que es lo de una sombra
+   marcada de mediodía. */
+renderer.shadowMap.type = THREE.PCFShadowMap;
 cont.appendChild(renderer.domElement);
 
 var escena = new THREE.Scene();
@@ -227,7 +231,6 @@ var sc = sol.shadow.camera;
 sc.left=-75; sc.right=75; sc.top=95; sc.bottom=-95; sc.near=1; sc.far=460;
 sol.shadow.bias = -0.0006; sol.shadow.normalBias = 0.03;
 sol.shadow.radius = 0.01;                               // sombra marcada: borde duro, sin difuminado
-sol.shadow.blurSamples = 8;                             // (solo PCFSoft lo usa; PCF no)
 escena.add(sol); escena.add(sol.target);
 var relleno = new THREE.DirectionalLight('#dce6ef',0.12);
 relleno.position.set(-40,32,44); escena.add(relleno);

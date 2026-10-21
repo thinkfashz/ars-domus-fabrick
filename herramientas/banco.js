@@ -153,7 +153,7 @@ AD.api = {
 };
 
 /* ── Cargar los módulos y capturar fallos ────────────────────────────────── */
-const modulos = ['paleta','cocina','plano','camaras','hub','audio','carga','luz','cctv','fabrick'];
+const modulos = ['paleta', 'cocina', 'plano', 'camaras', 'hub', 'audio', 'carga', 'luz', 'cctv', 'exterior', 'fabrick', 'recorrido'];
 const fallos = [];
 for(const m of modulos){
   const f = path.join(MOD, m + '.js');
@@ -184,7 +184,7 @@ console.log('mallas en escena   :', mallas, '(con userData.info:', conInfo + ')'
 console.log('piezas registradas :', AD.piezas.items.length,
             '| tipos:', JSON.stringify(AD.piezas.items.reduce((a,p)=>{a[p.tipo]=(a[p.tipo]||0)+1;return a;},{})));
 console.log('luces              :', luces.join(', ') || 'ninguna');
-console.log('APIs expuestas     :', ['plano','camaras','hub','cocina','audio','carga','paleta']
+console.log('APIs expuestas     :', ['plano','camaras','hub','cocina','audio','carga','paleta','luz','cctv','recorrido','exterior']
             .map(k=>k + (AD[k]?'✓':'✗')).join(' '));
 console.log('hooks registrados  :', AD.hooks.length);
 console.log('fallos             :', fallos.length);
