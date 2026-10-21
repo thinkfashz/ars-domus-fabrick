@@ -29,7 +29,8 @@ var TIPS = [
 ];
 
 var EST = {cargado:0, total:0, pct:0, el:null, barra:null, pctTxt:null, tip:null,
-           btn:null, listo:false, abierto:false, t0:0, relojTip:null};
+           btn:null, listo:false, abierto:false, t0:0, relojTip:null,
+           errores:[], gesto:false, ultimoScan:0, sinEscaneo:false};
 
 function el(id){ return document.getElementById(id); }
 
@@ -37,11 +38,17 @@ function el(id){ return document.getElementById(id); }
 /* Las texturas que pidió el visor ANTES de que existiera este módulo ya
    están en vuelo: se cuentan recorriendo la escena (una textura está lista
    cuando su imagen tiene complete !== false; los lienzos de canvas y las
-   texturas de datos no tienen complete: cuentan como listas). */
+   texturas de datos no tienen complete: cuentan como listas).
+   El recorrido de la escena no es gratis (miles de mallas): se hace como
+   mucho una vez por segundo, y se deja de hacer cuando ya no queda nada. */
 var TEXTURAS = [];
-function escanea(){
+function escanea(forzar){
   var a = AD.api;
   if(!a || !a.escena || !a.escena.traverse) return;
+  if(EST.sinEscaneo && !forzar) return;      /* ya no queda nada por contar */
+  var ahora = (new Date()).getTime();
+  if(!forzar && (ahora - EST.ultimoScan) < 1000) return;
+  EST.ultimoScan = ahora;
   a.escena.traverse(function(o){
     var m = o.material; if(!m) return;
     var mats = Array.isArray(m) ? m : [m];
@@ -75,7 +82,13 @@ function cuentaTexturas(){
       EST.cargado++;
       actualiza();
       if(onLoad) onLoad(tex);
-    }, onProgress, onError);
+    }, onProgress, function(e){
+      /* Una textura que falla tambien termina de cargar: si no, la barra se
+         queda en 99 % hasta que salta el watchdog de los 12 s. */
+      EST.cargado++;
+      actualiza();
+      if(onError) onError(e);
+    });
     if(t) t.__fabContada = true;              /* ya lo cuenta el parche */
     return t;
   };
@@ -115,23 +128,50 @@ function css(){
 
 /* El #cargando del visor tambien avisa de los errores de carga (window.onerror
    escribe ahi). Como nosotros lo tapamos, hay que replicar el aviso en nuestro
-   overlay: si no, un error se veria en negro. */
+   overlay: si no, un error se veria en negro.
+   Y al revés: si el overlay ya se ha ido (la casa ya esta), el aviso se
+   devuelve al #cargando del visor, que es el avisador de errores de verdad. */
 function error(e){
   if(!EST.el) crea();
   var t = e && e.target && e.target !== window && (e.target.src || e.target.href);
   var msg = t ? 'No se pudo cargar ' + t
               : String((e && e.message) || 'Error desconocido') + ' — ' +
                 String((e && e.filename) || '').split('/').pop() + ':' + ((e && e.lineno) || '');
-  var d = document.createElement('div');
-  d.style.cssText = 'margin-top:18px;padding:10px 12px;border:1px solid rgba(255,120,90,.5);'+
-    'border-radius:4px;background:rgba(80,20,12,.45);color:#ffd9cd;font:500 11px/1.45 "IBM Plex Mono",monospace;'+
-    'text-align:left;word-break:break-word';
-  d.textContent = msg;
-  EST.el.querySelector('.caja').appendChild(d);
-  EST.listo = true;
-  if(EST.btn) EST.btn.classList.add('listo');
-  EST.pctTxt.textContent = '100 %';
-  EST.barra.style.width = '100%';
+  /* Un modulo que falla cada cuadro repite el mismo error: se guarda una vez
+     y se listan pocos. Un aviso infinito llena la pantalla y no informa de mas. */
+  if(EST.errores.indexOf(msg) < 0) EST.errores.push(msg);
+  if(EST.errores.length > 5) EST.errores = EST.errores.slice(0, 5);
+  /* Sin overlay delante (o ya retirado del DOM, o desvaneciéndose): el aviso
+     va al #cargando, que es el avisador de errores de la casa. Un error que
+     se escribe en una capa que ya no se ve, no se ha avisado de nada. */
+  var caja = EST.el && EST.el.querySelector ? EST.el.querySelector('.caja') : null;
+  var seVe = EST.el && EST.el.parentNode && !EST.el.classList.contains('fuera');
+  if(!caja || !seVe){
+    var viejo = el('cargando');
+    if(viejo){
+      viejo.hidden = false;
+      viejo.innerHTML = '<span class="rotulo" style="max-width:60ch;text-align:center">' +
+        EST.errores.map(function(m){ return String(m).replace(/</g, '&lt;'); }).join('<br>') + '</span>';
+    }
+    return;
+  }
+  /* En el overlay solo se apilan tres avisos: los siguientes se cuentan. */
+  var ya = 0;
+  try{ ya = caja.querySelectorAll('.fab-error').length; }catch(e2){ ya = 0; }
+  if(ya < 3){
+    var d = document.createElement('div');
+    d.className = 'fab-error';
+    d.style.cssText = 'margin-top:18px;padding:10px 12px;border:1px solid rgba(255,120,90,.5);'+
+      'border-radius:4px;background:rgba(80,20,12,.45);color:#ffd9cd;font:500 11px/1.45 "IBM Plex Mono",monospace;'+
+      'text-align:left;word-break:break-word';
+    d.textContent = msg;
+    caja.appendChild(d);
+  }
+  if(EST.pctTxt) EST.pctTxt.textContent = '100 %';
+  if(EST.barra) EST.barra.style.width = '100%';
+  /* Un error no es una espera: la puerta se ofrece ya, pero el aviso se queda
+     en pantalla hasta que se entra. */
+  listo();
 }
 
 function crea(){
@@ -157,6 +197,7 @@ function crea(){
      '<div class="cuenta"></div>'+
    '</div>';
   d.classList.add('oculto');
+  if(!document.body || !document.body.appendChild) return d;   /* sin body: no hay nada que tapar */
   document.body.appendChild(d);
   EST.el = d;
   EST.barra = d.querySelector('.riel i');
@@ -164,10 +205,10 @@ function crea(){
   EST.tip = d.querySelector('.pista');
   EST.btn = d.querySelector('.entrar');
   EST.cuentaEl = d.querySelector('.cuenta');
-  EST.btn.addEventListener('click', function(e){
-    e.stopPropagation();
+  if(EST.btn) EST.btn.addEventListener('click', function(e){
+    if(e && e.stopPropagation) e.stopPropagation();
     /* Este toque es el gesto: desbloquea el audio y pide pantalla completa. */
-    EST.visto = true;
+    EST.gesto = true;
     if(EST.cuentaTimer){ clearInterval(EST.cuentaTimer); EST.cuentaTimer = null; }
     if(EST.cuentaEl) EST.cuentaEl.textContent = '';
     try{ if(AD.audio && AD.audio.activa) AD.audio.activa(); }catch(err){}
@@ -222,15 +263,19 @@ function pidePantalla(){
 /* ── Progreso ─────────────────────────────────────────────────────────────── */
 function actualiza(){
   if(!EST.el) return;
-  escanea();
+  escanea(EST.ultimoScan === 0);            /* la primera vez, sin esperar */
   var total = EST.total + TEXTURAS.length;
   var cargado = EST.cargado + listas();
   var p = total > 0 ? cargado/total : (AD.listo ? 1 : 0);
   /* Sin texturas pendientes, el progreso es el real: no se inventa. */
   if(p < EST.pct) p = EST.pct;
   EST.pct = p;
-  EST.barra.style.width = Math.round(p*100) + '%';
-  EST.pctTxt.textContent = Math.round(p*100) + ' %';
+  if(EST.barra) EST.barra.style.width = Math.round(p*100) + '%';
+  if(EST.pctTxt) EST.pctTxt.textContent = Math.round(p*100) + ' %';
+  /* Ya no hay nada que contar: no se recorre mas la escena (son miles de
+     mallas y esto se nota en el movil). Las texturas que se pidan a partir de
+     ahora las cuenta el parche del TextureLoader. */
+  if(p >= 0.999) EST.sinEscaneo = true;
   if(p > 0.985) listo();
 }
 
@@ -238,8 +283,8 @@ function progreso(p){
   if(!EST.el) crea();
   if(p > EST.pct){
     EST.pct = Math.max(0, Math.min(1, p));
-    EST.barra.style.width = Math.round(EST.pct*100) + '%';
-    EST.pctTxt.textContent = Math.round(EST.pct*100) + ' %';
+    if(EST.barra) EST.barra.style.width = Math.round(EST.pct*100) + '%';
+    if(EST.pctTxt) EST.pctTxt.textContent = Math.round(EST.pct*100) + ' %';
   }
   if(EST.pct >= 0.999) listo();
 }
@@ -249,10 +294,10 @@ function listo(){
   if(EST.listo) return;
   EST.listo = true;
   if(!EST.el) return;
-  EST.barra.style.width = '100%';
-  EST.pctTxt.textContent = '100 %';
-  EST.btn.classList.add('listo');
-  if(EST.el) EST.el.classList.add('puede-entrar');
+  if(EST.barra) EST.barra.style.width = '100%';
+  if(EST.pctTxt) EST.pctTxt.textContent = '100 %';
+  if(EST.btn) EST.btn.classList.add('listo');
+  EST.el.classList.add('puede-entrar');
   /* Si la carga fue rapida, la pantalla nunca se llego a ver: se entra ya.
      Una pantalla de carga que tapa una escena lista es una espera tonta. */
   if(EST.el && EST.el.classList.contains('oculto')){ setTimeout(function(){ entra(); }, 120); return; }
@@ -279,29 +324,45 @@ function entra(){
   EST.abierto = true;
   var d = EST.el;
   if(d) d.classList.add('fuera');
-  /* El #cargando viejo (lo oculta visor.js) se apaga también. */
+  /* El #cargando viejo (lo oculta visor.js) se apaga también... salvo que haya
+     errores: entonces es el avisador de errores de la casa y se queda con el
+     aviso a la vista. Un error que no se ve es un error que no se arregla. */
   var viejo = el('cargando');
-  if(viejo) viejo.hidden = true;
+  if(viejo){
+    if(EST.errores.length){
+      viejo.hidden = false;
+      viejo.innerHTML = '<span class="rotulo" style="max-width:60ch;text-align:center">' +
+        EST.errores.map(function(m){ return String(m).replace(/</g, '&lt;'); }).join('<br>') + '</span>';
+    } else {
+      viejo.hidden = true;
+    }
+  }
   if(EST.el) EST.el.classList.add('entrando');
   setTimeout(function(){
     if(d && d.parentNode) d.parentNode.removeChild(d);
     if(EST.relojTip){ clearInterval(EST.relojTip); EST.relojTip = null; }
   }, 700);
   /* Pantalla completa y sin scroll: en el móvil es lo que hace que se sienta
-     una app y no una web. */
-  try{
-    if(document.documentElement.requestFullscreen && !document.fullscreenElement){
-      var p = document.documentElement.requestFullscreen();
-      if(p && p.catch) p.catch(function(){});
-    }
-  }catch(e){}
-  try{ if(screen && screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(function(){}); }catch(e){}
+     una app y no una web. SOLO con gesto: pedirla sin que el usuario toque
+     nada es una promesa rechazada y el navegador avisa por consola. */
+  if(EST.gesto){
+    try{
+      if(document.documentElement.requestFullscreen && !document.fullscreenElement){
+        var p = document.documentElement.requestFullscreen();
+        if(p && p.catch) p.catch(function(){});
+      }
+    }catch(e){}
+    try{ if(screen && screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(function(){}); }catch(e){}
+  }
   /* El audio necesita un gesto, y este toque es el gesto: si el usuario lo habia
      dejado activado, se arranca aqui. El boton lo pone la barra de Fabrick,
      no un boton suelto que se le encima en el movil. */
-  if(AD.audio && !AD.audio.suena() && AD.audio.quiereSonido && AD.audio.quiereSonido()){
-    try{ AD.audio.activa(); }catch(e){}
-  }
+  try{
+    if(AD.audio && typeof AD.audio.suena === 'function' && !AD.audio.suena() &&
+       typeof AD.audio.quiereSonido === 'function' && AD.audio.quiereSonido()){
+      if(typeof AD.audio.activa === 'function') AD.audio.activa();
+    }
+  }catch(e){}
   if(AD.refrescaBarra) AD.refrescaBarra();
 }
 

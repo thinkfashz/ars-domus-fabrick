@@ -148,6 +148,26 @@ function verdeDe(cod, dato){
   return hex(LIMON[cod]) || dato || '#c8db8a';
 }
 
+/* El color neutro: el que tenía la pared ANTES del verde.
+   - Si el dato trae el verde (casa.js ya regenerado), el neutro es el de la tabla NEUTRO.
+   - Si el dato trae otro color, ese color ES el original de esa pared: se devuelve tal cual.
+   - Si no hay dato (una estancia sin `pared`), se conserva el color del material.
+   Nunca se devuelve el verde: por eso la tabla NEUTRO existe. */
+function neutroDe(cod, dato, orig){
+  var tabla = hex(NEUTRO[cod]);
+  if(dato){
+    if(tabla && dato !== tabla) return tabla;       // el dato trae el verde → el de antes
+    return dato;                                   // el dato trae su propio color → ese es
+  }
+  return orig || tabla || '#f2efe8';
+}
+
+/* Una estancia solo se pinta si su pared es un color liso: el azulejo y la piedra
+   llevan textura y se quedan como están. */
+function esPintable(pared){
+  return typeof pared === 'string' && pared.charAt(0) === '#';
+}
+
 /* =====================================================================================
    3 · EL INTERRUPTOR DE PALETA
    ===================================================================================== */
@@ -161,15 +181,21 @@ function aplica(t){
   for(var i = 0; i < grupos.length; i++){
     var g = grupos[i];
     var dato = colorDato(g.codigo);
-    var destino = (t === 'limon') ? verdeDe(g.codigo, dato) : (hex(NEUTRO[g.codigo]) || g.orig);
+    var destino = (t === 'limon') ? verdeDe(g.codigo, dato) : neutroDe(g.codigo, dato, g.orig);
     if(!destino) continue;
     if(!g.clon){
       /* se CLONA el material: el original lo comparte el resto de la estancia (y la otra versión
-         de la casa) y no se toca. El clon se queda con el color que se le pida. */
-      g.clon = g.mat.clone();
-      g.clon.userData = g.clon.userData || {};
-      g.clon.userData.paletaOrig = g.orig;            // el color de partida, para volver a neutro
-      g.clon.userData.paletaCod  = g.codigo;
+         de la casa) y no se toca. El clon se queda con el color que se le pida.
+         Si el material ya es un clon de este módulo (de una vuelta anterior del interruptor),
+         se reutiliza: así no se acumulan materiales nuevos en cada cambio de tema. */
+      if(g.mat.userData && g.mat.userData.paletaOrig && g.mat.userData.paletaCod === g.codigo){
+        g.clon = g.mat;
+      } else {
+        g.clon = g.mat.clone();
+        g.clon.userData = g.clon.userData || {};
+        g.clon.userData.paletaOrig = g.orig;            // el color de partida, para volver a neutro
+        g.clon.userData.paletaCod  = g.codigo;
+      }
     }
     g.clon.color.set(destino);
     for(var j = 0; j < g.mallas.length; j++){
@@ -183,15 +209,20 @@ function aplica(t){
 function alterna(){ return aplica(EST.tema === 'limon' ? 'neutro' : 'limon'); }
 function tema(){ return EST.tema; }
 
-/* Las estancias y su color, por si el hub quiere listarlas. */
+/* Las estancias y su color, por si el hub quiere listarlas.
+   Las que no se pintan (el baño es de azulejo, el porche es exterior) se listan igual,
+   pero con `pintable:false` y sin color: no tienen muro que pintar. */
 function estancias(){
   var api = AD.api, salida = [];
   if(!api || !api.INT || !api.INT.estancias) return salida;
   api.INT.estancias.forEach(function(e){
     if(!e || e.fuera) return;
     var dato = colorDato(e.codigo);
+    var pintable = esPintable(e.pared);
     salida.push({codigo:e.codigo || null, nombre:e.nombre || e.id,
-                 verde:verdeDe(e.codigo, dato), neutro:hex(NEUTRO[e.codigo]) || dato,
+                 pintable:pintable, pared:e.pared || null,
+                 verde:  pintable ? verdeDe(e.codigo, dato) : null,
+                 neutro: pintable ? neutroDe(e.codigo, dato, null) : null,
                  dato:dato});
   });
   return salida;

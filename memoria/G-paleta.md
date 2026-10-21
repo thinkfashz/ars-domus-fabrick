@@ -1,7 +1,69 @@
 # G · Muros interiores verde limón + recalibrado de la luz diurna
 
-Archivos que son míos: `modulo/paleta.js`, `demo/herramientas/casa.py`, `demo/herramientas/mejora.py`,
-`demo/casa.js` (generado) y esta memoria. Nada de commits: solo en disco.
+Archivos que son míos: `modulo/paleta.js`, `demo/herramientas/casa.py`,
+`demo/herramientas/mejora.py`, `demo/casa.js` (generado) y esta memoria.
+Nada de commits: solo en disco.
+
+## Revisión del 2026-10-20 (segunda vuelta: verificación + arreglos)
+
+Banco de pruebas en Node (three@0.128.0 de verdad, sin navegador):
+`/tmp/opencode/prueba-paleta.js`, con el montador compartido
+`/tmp/opencode/carga.js`. **37 comprobaciones, 0 fallos.**
+
+| Lo que se pidió | Resultado |
+|---|---|
+| el verde limón **está en el dato** | ✅ las 9 estancias pintables de las **dos** versiones (actual y mejorada) traen su hex verde en `INT.estancias[].pared`; el baño sigue en `azulejo` |
+| **regenerar con `python3 demo/herramientas/casa.py` da EXACTAMENTE el mismo archivo** | ✅ **idempotente**: el `sha256` de `demo/casa.js` es idéntico antes y después de regenerarlo (`d88e2e94…f37d0b`) |
+| `mejora.py` **no deja la versión mejorada sin verde** | ✅ `mejora.py` fija `pared` en salón (`#c8db8a`), cocina (`#cfe0a0`) y estudio (`#c3d49a`); el resto lo hereda de `casa.py`, que ya va en verde. Las dos versiones salen idénticas en paleta |
+| la luz se **escala** (no se pisa) con `Object.defineProperty` | ✅ las cuatro propiedades quedan redefinidas (`renderer.toneMappingExposure`, `sol.intensity`, `hemi.intensity`, `relleno.intensity`) y **el factor sobrevive** a que el visor escriba lo que quiera |
+| el conmutador **vuelve al color original, no al verde** | ✅ a neutro el salón vuelve a `#f2efe8`, la cocina a `#f4f4f2`, el estudio a `#a9b3c3`, el lavadero a `#f4f4f2`; **ningún muro se queda en verde** |
+
+### Lo que se midió de la luz (escrita por el visor = `aplicaLuz()`)
+
+| Momento | Lo que escribe el visor | Lo que queda (con el factor) |
+|---|---|---|
+| 13:00, ambiente natural | exp 1,00 · sol 0,757 · hemi 0,327 · relleno 0,070 | **0,84 · 1,327 · 0,555 · 0,140** |
+| de noche (sol 0,02) | exp 1,00 · sol 0,02 · hemi 0,10 · relleno 0,07 | 0,84 · **0,019** · 0,122 · 0,084 |
+| deslizador de rebote a 1,25 | hemi 0,327 · 1,25 | 0,327 · 1,25 · 1,697 = **0,694** (el factor no se pierde) |
+| escribir dos veces el mismo valor | exp 1,00 | **0,84** (el factor **no se acumula**) |
+
+El factor de la exposición es 0,840 de día y de noche (por eso el orden en que
+el visor escribe no importa para ella); el del sol, el de la hemisférica y el
+del relleno dependen de `EST.crudaSol`, que el `set` del sol actualiza **antes**
+de calcular el factor — y `aplicaLuz()` escribe el sol **antes** que la
+hemisférica, así que el factor siempre ve el valor fresco.
+
+### Arreglos que salieron de la revisión
+
+1. **El neutro se decidía solo con la tabla.** `aplica()` usaba
+   `hex(NEUTRO[g.codigo]) || g.orig`: si una estancia no estaba en la tabla, al
+   volver a neutro salía `g.orig`, que en esta casa **es el verde** (el dato ya
+   trae el verde, así que el material nace verde). Ahora hay una función
+   explícita:
+   ```js
+   function neutroDe(cod, dato, orig){
+     var tabla = hex(NEUTRO[cod]);
+     if(dato){
+       if(tabla && dato !== tabla) return tabla;   // el dato trae el verde → el de antes
+       return dato;                               // el dato trae su color → ese es el original
+     }
+     return orig || tabla || '#f2efe8';
+   }
+   ```
+   Con esta casa el resultado es el mismo (el dato trae el verde → la tabla),
+   pero una casa con su propia pintura vuelve a **su** color, no al verde.
+2. **Cada vuelta del interruptor creaba un material nuevo.** `aplica()` clonaba
+   el material cada vez (y el clon de un clon es otro clon): al conmutar 10
+   veces había 10 materiales por estancia. Ahora, si el material **ya es un clon
+   de este módulo** (`userData.paletaCod` coincide), se reutiliza: el material
+   original sigue intacto y no se acumulan clones.
+3. **`estancias()` decía que el baño era verde.** `verdeDe('BAN', null)` caía en
+   el valor por defecto (`#c8db8a`) y `neutro`/`dato` salían `null`, así que el
+   hub podía pintar el baño de verde o listing mal. Ahora cada estancia lleva
+   `pintable` (¿es un color liso?), `pared` (el valor crudo del dato) y, si no
+   es pintable, `verde`/`neutro` a `null`.
+
+---
 
 ## 1 · Qué encontré
 
@@ -20,6 +82,9 @@ node herramientas/build.mjs              # copia a dist/
   `mejora.py` sobrescribe `pared` de salón, cocina y estudio con `e.update(nuevos.get(e['id'], {}))`.
 - El aviso del propio archivo: *"GENERADO por demo/herramientas/casa.py: no se edita a mano"*.
 - `python3` = 3.14.4, `node` = 22.23.1. No hizo falta editar `casa.js` a mano.
+- **El generador es idempotente**: regenerarlo da un archivo byte a byte igual.
+  Conviene comprobarlo (hash antes y después) antes de dar por buena una
+  regeneración: si no lo fuera, cada vuelta dejaría ruido en el diff.
 
 ### Dónde vive el color de pared
 
@@ -38,6 +103,8 @@ Object.keys(e.paredes || {}).forEach(function(l){ otras[l] = pinta(e.paredes[l])
 - El revestimiento de cada lado se hace en `reviste()` (visor.js:1155) con `pano()` (visor.js:136),
   y **la geometría de `pano()` lleva `g.userData.muro = true`**. Es la única marca que distingue
   un paño de muro de cualquier otra cosa.
+- La ficha de la estancia lleva `info.id = e.codigo` ('SAL', 'COC'…): es el código
+  con el que la paleta trabaja.
 
 ### Las luces y quién las manda
 
@@ -57,7 +124,7 @@ de hora o de deslizador:
 renderer.toneMappingExposure = LUC.exp;
 sol.intensity   = SOLB.s;              // 0,22 + 0,55·t   (0,02 si el sol está bajo el horizonte)
 hemi.intensity  = SOLB.h * LUC.rebote; // 0,20 + 0,13·t   (0,10 de noche)
-relleno.intensity = 0.07 * LUC.rebote;
+relleno.intensity = 0,07 * LUC.rebote;
 ```
 
 `LUC` (exposición, rebote, bruma) y los cuatro ambientes (`natural`, `suave`, `dramatico`,
@@ -152,7 +219,7 @@ El `set` multiplica por el factor. Así:
 `renderer.toneMappingExposure` en r128 es un uniform que se pone en cada cuadro
 (`p_uniforms.setValue(_gl,'toneMappingExposure', _this.toneMappingExposure)`), así que el getter se
 lee en cada frame ✓. Las luces se localizan en la escena: la hemisférica es la única
-`HemisphereLight`, el sol es la `DirectionalLight` con `castShadow`, y el relleno la otra.
+`HemisphereLight`, el sol es el `DirectionalLight` con `castShadow`, y el relleno la otra.
 
 ### El interruptor de paleta
 
@@ -178,7 +245,7 @@ AD.paleta = {
   alterna: function(){ ... },      // pasa de un tema al otro → devuelve el nuevo
   tema:   function(){ ... },       // 'limon' | 'neutro'
   temas:  ['limon', 'neutro'],
-  estancias: function(){ ... },    // [{codigo, nombre, verde, neutro, dato}] (para el hub)
+  estancias: function(){ ... },    // [{codigo, nombre, pintable, pared, verde, neutro, dato}] (para el hub)
   calibraLuz: function(){ ... },   // reengancha la recalibración de la luz
   luz: LUZ                        // {dia:{exp,sol,hemi,relleno}, noche:{…}}
 };
@@ -197,6 +264,10 @@ AD.paleta = {
    hora o de deslizador. Hay que escalar.
 3. **El dato manda, pero el dato también es el neutro**: si el `pared` del dato es igual al neutro
    de la tabla, se usa la tabla del módulo (así el módulo funciona aunque `casa.js` no se regenere).
+   Y al revés: **el dato ya trae el verde**, así que el «original» ya no está en el dato: está en
+   la tabla `NEUTRO`. Si una estancia no está en la tabla, al volver a neutro hay que usar
+   `neutroDe()` (que hoy cae en el color del material, que es verde: por eso la tabla debe estar
+   completa).
 4. `mejora.py` sobrescribe `pared` de salón, cocina y estudio: si no se actualiza, la versión
    mejorada se queda en los blancos de antes y el interruptor «neutro» no coincide con ella.
 5. `Material.clone()` en r128 copia `userData` con `JSON.parse(JSON.stringify(...))`: dentro solo
@@ -205,17 +276,20 @@ AD.paleta = {
    propiedades de datos propias del objeto, se pueden redefinir (`configurable: true`).
    Si otro módulo las reescribe por su cuenta, se pierde el escalado (no lo hace nadie hoy).
 7. El material de un paño **no** se puede mutar: `mp` lo comparte con las mochetas de la estancia
-   y las dos versiones de la casa construyen el suyo propio, pero el `MI.*` (piedra, azulejo) son
+   y las dos versiones de la casa construyen el suyo propio, pero los `MI.*` (piedra, azulejo) son
    globales: nunca se tocan.
+8. **Clonar en cada vuelta**: el clon de un clon es otro clon. Sin `paletaCod` no se sabe si el
+   material que se tiene delante es el original o un clon: con ese dato se reutiliza.
 
 ## 5 · Pruebas hechas
 
 Sin navegador, con `three@0.128.0` de verdad (`node_modules/three`) y objetos reales
-(`MeshPhongMaterial`, `Scene`, `traverse`): 24 comprobaciones — el paño conserva el verde del
-dato, la mocheta comparte el clon, el material original no se muta, el azulejo y la piedra no se
-tocan, el clon conserva `shininess`/`specular`, el neutro y el vuelta a limón, los cuatro valores
-de luz de día y de noche, y el repintado al cambiar de versión. La prueba está en
-`/tmp/opencode/test-paleta3d.js` (fuera del repo).
+(`MeshPhongMaterial`, `Scene`, `traverse`): `memoria/pruebas/prueba-paleta.js` (copia en `/tmp/opencode/`), 37 comprobaciones
+(0 fallos) — el paño conserva el verde del dato, la mocheta comparte el clon, el material original
+no se muta, el azulejo y la piedra no se tocan, el clon conserva `shininess`/`specular`, el neutro
+y la vuelta a limón, los cuatro valores de luz de día y de noche, el factor que sobrevive a la hora
+y a los deslizadores, que escribir dos veces el mismo valor no acumula el factor, y el repintado
+al cambiar de versión.
 
 ## 6 · Qué falta / pendientes
 
@@ -229,6 +303,8 @@ de luz de día y de noche, y el repintado al cambiar de versión. La prueba est�
   luminarias quedan como estaban: son del visor y no se han tocado.
 - `localStorage['arsdomus-paleta']` no tiene botón para olvidarlo: se borra desde la consola.
 - La lista `estancias()` está por si el hub (agente C) quiere listar los ambientes y sus colores.
+  **Ojo**: el campo `verde` ahora puede venir `null` (las estancias que no se pintan): el hub
+  debería mirar `pintable` antes de pintar nada.
 - **Ojo**: durante este trabajo, otro agente escribió `modulo/paleta.js` encima (versión con
   `aplicaLuz()` a pelo y `neutro()` que devolvía el color del dato: con el dato ya en verde, el
   tema «neutro» no hacía nada). La versión que queda aquí es la que está probada; si vuelve a
@@ -239,6 +315,13 @@ de luz de día y de noche, y el repintado al cambiar de versión. La prueba est�
 - `demo/herramientas/casa.py`: paleta verde en `ESTANCIAS` + constantes `LIMON_*` y el diccionario
   `NEUTRO` (documenta el color de antes).
 - `demo/herramientas/mejora.py`: la versión mejorada usa la misma familia de verde.
-- `demo/casa.js`: regenerado (`python3 demo/herramientas/casa.py`).
-- `modulo/paleta.js`: nuevo.
+- `demo/casa.js`: regenerado (`python3 demo/herramientas/casa.py`) — **idempotente**.
+- `modulo/paleta.js`: nuevo; en esta vuelta, `neutroDe()`, `esPintable()`, reutilización del clon
+  y `estancias()` con `pintable`/`pared`.
 - `TAREAS.md`: fila G marcada.
+
+## Aviso para quien edite este repo
+
+La herramienta de edición de este entorno **a veces se come un carácter** al
+escribir. **Después de cada edición, revisa el `git diff` línea por línea** y
+pasa `node --check`. No te fíes del «editado con éxito».

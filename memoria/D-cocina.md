@@ -1,7 +1,60 @@
 # D — Cocina con herrajes reales (`modulo/cocina.js`)
 
-Entrega del agente D. Archivo propio: `modulo/cocina.js` (612 líneas).
+Entrega del agente D. Archivo propio: `modulo/cocina.js`.
 No se tocan `visor.js`, `index.html` ni `demo/casa.js`.
+
+## Revisión del 2026-10-20 (segunda vuelta: verificación + arreglos)
+
+Todo se comprobó con bancos de prueba en Node (three@0.128.0 de verdad, sin
+navegador). Los tres están en `/tmp/opencode/` y se pueden volver a correr:
+
+```bash
+cd memoria/pruebas
+node carga.js             # el montador compartido (casa real + escena + DOM de mentira)
+node prueba-cocina.js     # 45 comprobaciones de la cocina
+# (copia en /tmp/opencode/ también; en el repo no se pierde con un reinicio)
+```
+
+| Lo que se pidió | Resultado |
+|---|---|
+| 44 piezas, **sin duplicar** al calling `repara()` dos veces | ✅ 44 → 44, 26 cajones / 16 puertas / 2 neveras, ids únicos y **el mismo número de mallas** (nada duplicado) |
+| el cajón sale **0,46 m** | ✅ el cajón alto de la encimera (`COC-01-caj-3-*`) recorre Δz = 0,4600 exacto; los demás 0,42 y 0,44, y **ninguno pasa de 0,46** |
+| la puerta basculante gira **exactamente 90°** | ✅ rot.x = −1,570796… = **−90,0000°** (no 89, ni 91) |
+| la isla de la versión mejorada (**COC-M01**) tiene vuelo y barra | ✅ vuelo de la barra **0,42 m** (la actual, COC-03, 0,32) y barra a **1,05** en las dos |
+| la nevera abre **sobre su bisagra** y su luz se enciende | ✅ el pivote está en el canto (x = −0,35 = la mitad del ancho), la hoja desplazada 0,349 (= (0,70 − 2 mm) / 2): gira **sobre la bisagra**, no sobre su centro. La `PointLight` pasa de 0 a **0,75** al abrir y vuelve a 0 al cerrar |
+| horno y microondas | **NO están en el dato** (`INT.muebles` no los tiene) → **no se inventan**. La placa y la campana sí, porque el brief las pedía |
+
+### Arreglos que salieron de la revisión
+
+1. **El mobiliario general era código muerto.** `repara()` filtraba
+   `if(!m.id || m.id.indexOf('COC') !== 0) return;`, así que la rama
+   `mejoraMueble()` (cojín, listón y faldón) **nunca se ejecutaba**: el módulo
+   prometía mejorar las sillas y la mesa y no lo hacía.
+   **Arreglo**: ahora se separan los dos casos —
+   ```js
+   var esCoc = (m.id.indexOf('COC') === 0);
+   var esGeneral = (m.tipo === 'silla_madera' || m.tipo === 'mesa_madera');
+   if(!esCoc && !esGeneral) return;
+   ```
+   La cocina se **rehace** (se quita el grupo viejo y se construye otro), el
+   mobiliario general **se mejora** (se le añade lo que le falta, sin tocar lo que
+   el visor ya dibujó). `mejoraMueble()` es idempotente (marca `__cocina`).
+2. **El listón del respaldo era invisible.** Estaba en z −0,188 y el respaldo del
+   visor ocupa de −0,2025 a −0,1775: el listón quedaba **dentro** de la madera.
+   Ahora va en z −0,169, en la cara anterior, y se ve.
+3. **Las mallas nuevas del mobiliario general llevan ficha** (`userData.info`),
+   como las de la cocina: el panel del visor sigue funcionando al tocarlas.
+   Se copian de la malla hermana del mismo mueble.
+
+### Lo que sigue igual (no se ha tocado)
+
+- El reparto de la encimera, las medidas, los materiales cacheados, la animación
+  por `dt` con `smoothstep`, el giro de 180° del cuerpo de la isla, el pivote
+  superior de las basculantes, la nevera de dos hojas con su luz: todo igual.
+- La lista de piezas (`AD.cocina.piezas`) y sus ids (`COC-01-caj-3-actual`,
+  `COC-02-nevera-mejorada`, `COC-M01-caj-1-mejorada`…) no ha cambiado: 44.
+
+---
 
 ## Qué hace
 
@@ -19,7 +72,7 @@ módulo la rehace con lógica constructiva y **herrajes que se ven**:
 | Bisagra de basculante (yunding) | **pivote (cilindro) + brazo + soporte fijo**, a la vista; la hoja bascula 90° (rotación X de −π/2) |
 | Guías de cajón | guía **fija** en el mueble y guía **móvil** en el cajón: al salir se ve el deslizamiento |
 | Nevera | 0,70 × 2,00 × 0,65, dos hojas (frigorífico a la izquierda, congelador a la derecha), baldas, cajón de verduras, cesta y **luz interior** (panel emisivo + `PointLight` que se enciende al abrir) |
-| Isla | cuerpo de 0,60, encimera de trabajo a 0,90, **barra a 1,05** sobre patas de metal y **vuelo de 0,30 a 0,42** según el fondo del dato |
+| Isla | cuerpo de 0,60, encimera de trabajo a 0,90, **barra a 1,05** sobre patas de metal y **vuelo de 0,32** (actual) / **0,42** (mejorada) |
 | Banquetas | asiento con cojín, patas cónicas y aro de apoyo en metal |
 | Mobiliario general | a las sillas de madera y a la mesa de madera: cojín de asiento, listón de respaldo y faldón (el visor ya traía colchón, almohadas, nórdico, cojines y patas) |
 
@@ -114,20 +167,25 @@ congelador como `puerta`). El hub (agente C) las puede listar tal cual.
 9. **El módulo puede cargarse antes que `visor.js`.** Si `AD.avisaListo` no
    existe, se espera con un `setTimeout` de 250 ms hasta que `AD.api.escena`
    exista.
+10. **Un filtro puede volver código muerto.** El `indexOf('COC') !== 0` de
+    `repara()` dejó sin efecto `mejoraMueble()` durante días sin que se notara:
+    el módulo "funcionaba" y en realidad no hacía esa parte. Los tests lo
+   detectaron al contar las mallas de la silla (1 en vez de 3).
 
 ## Cómo se comprobó
 
-Banco de pruebas sin navegador (`/tmp/opencode/prueba-cocina.js`): se simula lo
-que hace el visor (escena, `GRUPOS_V`, `pick`, `piezas`, `onFrame`) con el three
-del repo, se cargan `demo/casa.js` y `modulo/cocina.js`, y se mide:
+Banco de pruebas sin navegador (`/tmp/opencode/prueba-cocina.js`, con el
+montador compartido `/tmp/opencode/carga.js`): se simula lo que hace el visor
+(escena, `GRUPOS_V`, `pick`, `piezas`, `onFrame`) con el three del repo, se
+cargan `demo/casa.js` y `modulo/cocina.js`, y se mide:
 
 - 44 piezas registradas, 44 ids únicos, 26 cajones / 16 puertas / 2 neveras.
 - 1065 mallas, **todas con `userData.info`** (el panel del visor sigue vivo).
 - 2 luces (la de cada nevera): 0 → 0,75 al abrir y 0 al cerrar.
 - Un cajón recorre 0,46 m en z y vuelve; la puerta basculante gira −1,571 rad
   (−90° exactos).
-- `repara()` dos veces seguidas: siguen siendo 44 piezas y 1065 mallas
-  (**nada duplicado**).
+- `repara()` dos veces seguidas: siguen siendo 44 piezas y las mismas mallas
+  (**nada duplicado**), tampoco en el mobiliario general.
 - `Box3` por mueble: la encimera ocupa u 8,34 … 12,27 y 0,12 … 2,80 de alto; la
   isla vuela 0,32 (versión actual) y 0,42 (mejorada) y la barra queda a 1,05.
 
@@ -150,7 +208,8 @@ memoria** (la verificada con el banco de pruebas).
 
 - **Horno y microondas**: no están en los datos (`INT.muebles` no los tiene) y
   no se inventan. La placa y la campana sí, porque el brief las pedía; el
-  horno se puede añadir cuando el dato lo traiga.
+  horno se puede añadir cuando el dato lo traiga. *(Anotado por el coordinator:
+  sigue pendiente, sin cambio.)*
 - **Alacena sobre el fregadero**: no cabe (la ventana ocupa esa franja). La
   solución real —alacena con cajón dePersiana o campana con balda— necesita
   un dato nuevo.
@@ -160,9 +219,18 @@ memoria** (la verificada con el banco de pruebas).
   piezas de la misma versión.
 - **Mobiliario general**: el visor ya traía cama (colchón, almohadas, nórdico),
   sofá de tela (cojines y patas), mesa (tablero y patas) y silla (asiento,
-  respaldo y patas). Solo se añadió lo que faltaba de verdad: cojín y listón
-  a la silla, faldón a la mesa. Si el coordinator quiere más, lo natural es
-  tocar el `MUEBLE` del visor, no este módulo.
+  respaldo y patas). Este módulo solo añade a la silla el cojín y el listón, y
+  a la mesa el faldón. Si el coordinator quiere más, lo natural es tocar el
+  `MUEBLE` del visor, no este módulo.
 - **Prueba en el teléfono**: no se ha abierto el visor en el móvil. La cocina
   se ve de frente desde el salón y desde el pasillo; la puerta basculante de
   la alacena se ve desde abajo.
+- **Los muebles con `id` propio que no sean COC ni silla/mesa** (librería,
+  cómoda, escritorio…) no se tocan: son del visor.
+
+## Aviso para quien edite este repo
+
+La herramienta de edición de este entorno **a veces se come un carácter** al
+escribir (pasó con `'silla_madera'`, que quedó `'sila_madera'`, y con `silla`
+→ `sila` en una prueba). **Después de cada edición, revisa el `git diff` línea
+por línea** y pasa `node --check`. No te fíes del «editado con éxito».

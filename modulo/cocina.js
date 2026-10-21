@@ -493,14 +493,20 @@ function construyeBanqueta(g, m, ver){
    =================================================================== */
 function mejoraMueble(g, m){
   if(g.userData && g.userData.__cocina) return;                 // ya está mejorada
+  /* la ficha del mueble, para que el panel del visor siga funcionando */
+  var info = null;
+  g.traverse(function(o){ if(o.isMesh && o.userData.info && !info) info = o.userData.info; });
+  var pon = function(mesh){ if(info) mesh.userData.info = info; return mesh; };
   if(m.tipo === 'silla_madera'){
     var c = lam(m.color || '#8a6a48');
-    pz(g, 0.40, 0.03, 0.40, lam(m.asiento || '#d9cdb4'), 0, 0.482, 0);      // cojín del asiento
-    pz(g, 0.38, 0.055, 0.016, c, 0, 0.80, -0.188);                          // listón del respaldo
+    /* el cojín va sobre el asiento del visor (0,42 de lado, canto superior a 0,47) */
+    pon(pz(g, 0.40, 0.03, 0.40, lam(m.asiento || '#d9cdb4'), 0, 0.482, 0));
+    /* el listón va en la cara ANTERIOR del respaldo (el visor lo pone en z -0,19, canto 0,025) */
+    pon(pz(g, 0.38, 0.055, 0.016, c, 0, 0.80, -0.169));
   } else if(m.tipo === 'mesa_madera'){
     var L = m.largo || 2.2, D = m.fondo || 0.95, cm = lam(m.color || '#a97c50');
-    pz(g, L - 0.26, 0.06, 0.05, cm, 0, 0.685, D/2 - 0.12);                   // faldón
-    pz(g, L - 0.26, 0.06, 0.05, cm, 0, 0.685, -D/2 + 0.12);
+    pon(pz(g, L - 0.26, 0.06, 0.05, cm, 0, 0.685, D/2 - 0.12));
+    pon(pz(g, L - 0.26, 0.06, 0.05, cm, 0, 0.685, -D/2 + 0.12));
   }
   g.userData.__cocina = true;
 }
@@ -536,7 +542,12 @@ function repara(){
     var INT = interiorDe(v);
     if(!INT || !INT.muebles) return;
     INT.muebles.forEach(function(m){
-      if(!m.id || m.id.indexOf('COC') !== 0) return;
+      if(!m.id) return;
+      /* la cocina (id COC-*) se rehace entera; el mobiliario general (sillas y
+         mesa de madera) solo se mejora: se le añade lo que le falta. */
+      var esCoc = (m.id.indexOf('COC') === 0);
+      var esGeneral = (m.tipo === 'silla_madera' || m.tipo === 'mesa_madera');
+      if(!esCoc && !esGeneral) return;
       var gs = (porId[m.id] || []).filter(function(g){ return versionDe(g) === v; });
       if(!gs.length) return;
       if(m.tipo === 'silla_madera' || m.tipo === 'mesa_madera'){

@@ -5285,14 +5285,15 @@ addEventListener('pagehide', guardaVista);
 bucle();
 document.getElementById('cargando').hidden = true;
 window.__visor = {escena:escena, camara:camara, aplicaVista:aplicaVista, VISTAS:VISTAS, pie:pie,
-                  entrarPie:entrarPie, salirPie:salirPie, IDS:IDS, irAId:irAId, ED:ED, PUNTOS:PUNTOS, LZ:LZ, REPARTO:REPARTO, estanciaActiva:estanciaActiva};
+                  entrarPie:entrarPie, salirPie:salirPie, salirTour:salirTour,
+                  IDS:IDS, irAId:irAId, ED:ED, PUNTOS:PUNTOS, LZ:LZ, REPARTO:REPARTO, estanciaActiva:estanciaActiva};
 
 /* ── Contrato para los modulos de modulo/ ── */
 AD.api = {escena:escena, camara:camara, renderer:renderer, capas:capas, pie:pie,
           TOUR:TOUR, TOURS:TOURS, PUERTAS:PUERTAS, PUNTOS:PUNTOS, pick:pick,
           VISTAS:VISTAS, VERSIONES:VERSIONES,
           GRUPOS_V:GRUPOS_V, LZ:LZ, GIRO:GIRO, SUELO:SUELO, aMundo:aMundo, d2r:d2r,
-          entraPie:entrarPie, salirPie:salirPie, aplicaVista:aplicaVista, eligeVista:eligeVista,
+          entraPie:entrarPie, salirPie:salirPie, salirTour:salirTour, aplicaVista:aplicaVista, eligeVista:eligeVista,
           mueve:mueve, visible:visible, estanciaActiva:estanciaActiva, reloj:reloj,
           poneCapa:poneCapa, MUEBLE:MUEBLE, MAT:MAT, C0:C0};
 /* C, INT y VERSION cambian al cambiar de version de casa: son getters, no copias.

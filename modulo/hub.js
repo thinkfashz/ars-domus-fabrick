@@ -36,11 +36,35 @@ var AD = window.AD || (window.AD = {});
     listaPuertas:null, listaPiezas:null, listaLuces:null, resumenLuces:null,
     filasPuerta:[], filasPieza:[], filasLuz:[],
     nPuertas:-1, nPiezas:-1, nLuces:-1,
+    firmaPuertas:'', firmaPiezas:'', version:'', piezasRef:null,
     mapa:null,          // puerta -> info (nombre real del hueco)
     reloj:null
   };
 
   function api(){ return AD.api || null; }
+
+  /* ------------------------------------------------------------------
+     1b. Versión de casa
+     ------------------------------------------------------------------ */
+  /* La escena tiene las DOS versiones a la vez (la actual y la mejorada) y
+     solo se ve una. El visor publica los grupos de cada versión en
+     AD.api.GRUPOS_V: se sube por el árbol hasta dar con uno y se sabe de qué
+     versión es. Sin esto, el hub ofrece los cajones de la cocina actual y los
+     de la mejorada mezclados, y el usuario abre un cajón que no ve. */
+  function versionDe(o){
+    var a = api();
+    if(!a || !a.GRUPOS_V || !o) return '';
+    for(var p = o; p; p = p.parent){
+      for(var k in a.GRUPOS_V){
+        if(a.GRUPOS_V[k] && a.GRUPOS_V[k].indexOf(p) >= 0) return k;
+      }
+    }
+    return '';
+  }
+  function versionActual(){
+    var a = api();
+    return (a && a.VERSION) ? a.VERSION : 'actual';
+  }
 
   /* ------------------------------------------------------------------
      2. Utilidades
@@ -65,22 +89,27 @@ var AD = window.AD || (window.AD = {});
      ------------------------------------------------------------------ */
   /* El visor pone en la malla de la hoja un userData.info con el nombre
      del hueco y un puntero a la puerta móvil (info.puerta). Con eso se
-     consigue el nombre real («Puerta vidriera», «Puerta del garaje»…). */
+     consigue el nombre real («Puerta vidriera», «Puerta del garaje»…).
+     OJO: la puerta es un OBJETO, así que no puede ser la clave de un objeto
+     plano (todas valdrían '[object Object]' y todas las puertas acabarían
+     con el nombre de la última). Se guarda en una lista y se busca por
+     identidad. */
   function mapaPuertas(){
     if(H.mapa) return H.mapa;
-    var m = {};
+    var lista = [];
     var a = api();
     if(a && a.escena && a.escena.traverse){
       a.escena.traverse(function(o){
         var info = o.userData && o.userData.info;
-        if(info && info.puerta) m[info.puerta] = info;
+        if(info && info.puerta) lista.push({p:info.puerta, info:info});
       });
     }
-    H.mapa = m;
-    return m;
+    H.mapa = lista;
+    return lista;
   }
   function nombrePuerta(p, m){
-    var info = m[p];
+    var info = null;
+    for(var i = 0; i < m.length; i++){ if(m[i].p === p){ info = m[i].info; break; } }
     var n = info && info.nombre ? info.nombre : 'Puerta';
     if(info && info.id) n += ' · ' + info.id;
     return n;
@@ -124,9 +153,18 @@ var AD = window.AD || (window.AD = {});
   }
   function puertas(){
     var a = api(); if(!a || !a.PUERTAS) return [];
+    var v = versionActual();
+    /* Al cambiar de versión los nombres de los huecos son otros: el mapa de
+       nombres se relee, no se queda con el de antes. */
+    if(v !== H.version){ H.version = v; H.mapa = null; }
     var m = mapaPuertas();
     var out = [];
     a.PUERTAS.forEach(function(p){
+      if(!p) return;
+      /* Solo las puertas de la versión que se está viendo: las de la otra
+         siguen en la escena, pero no se pueden abrir a ojo. */
+      var ver = versionDe(p.g);
+      if(ver && ver !== v) return;
       out.push({p:p, nombre:nombrePuerta(p, m), estancia:estanciaDe(p), abierta:p.obj > 0.5});
     });
     return out;
@@ -144,10 +182,50 @@ var AD = window.AD || (window.AD = {});
   }
 
   /* ------------------------------------------------------------------
-     4. Piezas (cajones y nevera)
+     4. Piezas (cajones, nevera, puertas de mueble)
      ------------------------------------------------------------------ */
+  /* La cocina registra los herrajes de las DOS versiones (las dos cocinas
+     están en la escena) y su id lo dice: «COC-01-caj-1-actual»,
+     «COC-01-caj-1-mejorada». Aquí solo se muestra la de la versión que se está
+     viendo: si no, aparecen dos «Cajón inferior» y el que se abre es el de la
+     casa que no se está mirando. */
+  function versionPieza(it){
+    var id = (it && it.id) || '';
+    var m = /-(actual|mejorada)$/.exec(id);
+    return m ? m[1] : '';
+  }
   function piezas(){
-    return (AD.piezas && AD.piezas.items) ? AD.piezas.items : [];
+    var items = (AD.piezas && AD.piezas.items) ? AD.piezas.items : [];
+    var v = versionActual();
+    var out = [];
+    for(var i = 0; i < items.length; i++){
+      var it = items[i]; if(!it) continue;
+      /* Solo las piezas que se pueden tocar: sin abre/cierra/estado no hay nada
+         que el hub pueda hacer con ellas. */
+      if(typeof it.abre !== 'function' && typeof it.cierra !== 'function' && typeof it.estado !== 'function') continue;
+      var ver = versionPieza(it);
+      if(ver && ver !== v) continue;
+      out.push(it);
+    }
+    return out;
+  }
+  /* La firma de la lista: si cambia, hay que rehacer las filas. Comparar solo
+     el numero de piezas no basta: al cambiar de versión puede haber las mismas
+     en cantidad y ser otras (las de la otra casa). */
+  function firmaPiezas(ps){
+    var s = [];
+    for(var i = 0; i < ps.length; i++){
+      s.push((ps[i].id || '') + '~' + (ps[i].etiqueta || '') + '~' + (ps[i].grupo || ''));
+    }
+    return s.join('|');
+  }
+  /* Y además, la identidad: si la cocina se rehace (AD.cocina.aplicar()), las
+     piezas son objetos NUEVOS con los mismos ids. Las filas tienen que
+     apuntar a los objetos vivos, no a los que ya no animan nada. */
+  function mismasPiezas(a, b){
+    if(!b || a.length !== b.length) return false;
+    for(var i = 0; i < a.length; i++) if(a[i] !== b[i]) return false;
+    return true;
   }
   function estadoPieza(it){
     try{ return it.estado ? (it.estado() > 0.5 ? 1 : 0) : 0; }catch(e){ return 0; }
@@ -334,8 +412,8 @@ var AD = window.AD || (window.AD = {});
     cuerpo.appendChild(sP);
     H.secPuertas = sP; H.listaPuertas = sP.querySelector('.hub-lista');
 
-    /* Cajones y nevera */
-    var sC = seccion('Cajones y nevera', true);
+    /* Cajones, nevera y demas herrajes animables */
+    var sC = seccion('Piezas animables', true);
     cuerpo.appendChild(sC);
     H.secPiezas = sC; H.listaPiezas = sC.querySelector('.hub-lista');
 
@@ -365,11 +443,18 @@ var AD = window.AD || (window.AD = {});
   /* ------------------------------------------------------------------
      9. Pintado de las listas
      ------------------------------------------------------------------ */
+  function firmaPuertas(ps){
+    var s = [];
+    for(var i = 0; i < ps.length; i++) s.push(i + '~' + ps[i].nombre + '~' + ps[i].estancia);
+    return s.join('|');
+  }
   function pintaPuertas(){
     var lista = H.listaPuertas; if(!lista) return;
     var ps = puertas();
     H.secPuertas.cuenta.textContent = ps.length ? String(ps.length) : '';
-    if(ps.length !== H.nPuertas){
+    var firma = firmaPuertas(ps);
+    if(firma !== H.firmaPuertas){
+      H.firmaPuertas = firma;
       H.nPuertas = ps.length;
       limpia(lista);
       H.filasPuerta = [];
@@ -418,15 +503,18 @@ var AD = window.AD || (window.AD = {});
     var lista = H.listaPiezas; if(!lista) return;
     var ps = piezas();
     H.secPiezas.cuenta.textContent = ps.length ? String(ps.length) : '';
-    if(ps.length !== H.nPiezas){
+    var firma = firmaPiezas(ps);
+    if(firma !== H.firmaPiezas || !mismasPiezas(ps, H.piezasRef)){
+      H.firmaPiezas = firma;
+      H.piezasRef = ps.slice();
       H.nPiezas = ps.length;
       limpia(lista);
       H.filasPieza = [];
       if(!ps.length){
         var v = el('div', 'hub-vacio');
-        v.innerHTML = '<b>Sin piezas animables</b>Todavía no hay cajones ni nevera que controlar. ' +
-                      'En cuanto la cocina registre sus herrajes, sus cajones y la nevera aparecerán aquí, ' +
-                      'uno por uno, con su estado.';
+        v.innerHTML = '<b>Sin piezas animables</b>Todavía no hay cajones, puertas de mueble ni nevera ' +
+                      'que controlar. En cuanto la cocina registre sus herrajes, aparecerán aquí uno ' +
+                      'por uno, con su estado.';
         lista.appendChild(v);
         return;
       }
@@ -526,7 +614,7 @@ var AD = window.AD || (window.AD = {});
       /* sonido: el mismo módulo de audio, con su botón */
       var fs = el('div', 'hub-fila');
       var bSon = boton('Sonido: —', function(){
-        if(AD.audio) AD.audio.alterna();
+        if(AD.audio && typeof AD.audio.alterna === 'function') AD.audio.alterna();
         refresca();
       }, false);
       fs.appendChild(bSon);
@@ -553,7 +641,7 @@ var AD = window.AD || (window.AD = {});
       pintaLuces();
       pintaEscenas();
       pintaAmbiente();
-      if(H.botonSonido && AD.audio){
+      if(H.botonSonido && AD.audio && typeof AD.audio.suena === 'function'){
         H.botonSonido.textContent = 'Sonido: ' + (AD.audio.suena() ? 'encendido' : 'apagado');
         H.botonSonido.setAttribute('aria-pressed', AD.audio.suena() ? 'true' : 'false');
       }
@@ -566,7 +654,11 @@ var AD = window.AD || (window.AD = {});
     H.abierto = true;
     document.body.classList.add('fab-hub');
     H.mapa = null;                       // los nombres se releen por si cambió la versión
-    H.nPuertas = -1;                      // y la lista de puertas se rehace con ellos
+    H.firmaPuertas = '';                 // y las listas se rehacen con ellos
+    H.firmaPiezas = '';
+    H.piezasRef = null;
+    H.nPuertas = -1;
+    H.nPiezas = -1;
     refresca();
     if(H.reloj) clearInterval(H.reloj);
     H.reloj = setInterval(function(){ if(H.abierto) refresca(); }, 1500);
@@ -592,9 +684,14 @@ var AD = window.AD || (window.AD = {});
   function arranca(){
     crea();
     /* Las piezas y las puertas pueden aparecer más tarde (la cocina
-       registra sus cajones cuando está lista): se refresca solo. */
+       registra sus cajones cuando está lista) y cambian al cambiar de
+       versión de casa: se comparan las firmas y se rehace la lista solo
+       cuando de verdad ha cambiado algo. */
     setInterval(function(){
-      if(!H.abierto){ if(piezas().length !== H.nPiezas) refresca(); return; }
+      if(H.abierto) return;
+      var ps = piezas();
+      if(!mismasPiezas(ps, H.piezasRef) || firmaPiezas(ps) !== H.firmaPiezas) refresca();
+      else if(firmaPuertas(puertas()) !== H.firmaPuertas) refresca();
     }, 2000);
   }
   if(document.body) arranca();
