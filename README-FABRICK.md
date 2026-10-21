@@ -40,10 +40,30 @@ Comprobación rápida de sintaxis: `CASA=demo npm run check`.
 | Muebles de块的 básicos | **Cocina con herrajes**: frentes con holgura de 1 mm, tiradores de barra, **bisagras de basculante** y guías visibles; mobiliario con colchón, cojines y patas |
 | Sin sonido | **Música y ambiente sintetizados** con WebAudio (sin descargar un solo archivo) |
 | «Levantando la maqueta…» | **Carga de videogame**: progreso real, tips y puerta de entrada |
-| Muros de color neutro | **Muros interiores verde limón** (el verde va al muro, nunca al piso) y **luz diurna recalibrada** |
+| Muros de color neutro | **Muros interiores verde limón** (el verde va al muro, nunca al piso), **forro exterior en pintura azul oscuro** y **luz diurna recalibrada** |
+| Al tocar un muro sale un «x · z · altura» | Ya no: la ficha dice **qué** es y **dónde** está, sin coordenadas |
 
 Todo se controla desde la **barra de Fabrick** (arriba a la derecha en escritorio,
-abajo en móvil): Plano · Cine · Control · Color · Sonido.
+abajo en móvil): Plano · Cine · CCTV · Control · Color · Sonido.
+
+### La luz, en cuatro capas
+
+1. **Sol** — direccional, con sombra marcada (radio 0,01: borde duro).
+2. **Sol interior** — una segunda direccional sin sombra, en la misma dirección,
+   para que las estancias que dan al patio no queden negras.
+3. **Luz globo** — esferas con `PointLight` de alcance corto: una bombilla no
+   ilumina la casa entera. Las de dentro cuelgan de las luminarias que ya dibuja
+   el visor; las de fuera, en los farolillos del camino.
+4. **Luz volumétrica** — conos aditivos desde cada ventana hacia el sol, con
+   degradado. La **densidad es 0,005**: se insinúa. `AD.luz.ponDensidad(0.03)`
+   la convierte en humo.
+
+### Cámaras CCTV
+
+Un muro de cámaras, pero de cine: letterbox, REC, reloj y **cambio de toma** con
+◀ ▶, en automático cada 8 s, o eligiendo en la lista. Las cámaras **se sacan de
+los datos**: una por estancia (en la esquina, a 2,60 m, mirando al centro) y
+cuatro de exterior. CCTV y modo cine son excluyentes.
 
 ## Arquitectura: datos primero, 3D que solo dibuja
 
@@ -59,6 +79,8 @@ modulo/            las funciones nuevas, en módulos sueltos
   hub.js           hub de control
   audio.js         música y ambiente (WebAudio)
   carga.js         pantalla de carga
+  luz.js           sol interior, luz globo y luz volumétrica (densidad 0,005)
+  cctv.js          cámaras de vigilancia con cambio de toma
   fabrick.js       la barra que junta a todos
 memoria/           la memoria de cada agente: qué encontró, qué decidió, qué falta
 TAREAS.md          el tablero de tareas
