@@ -855,6 +855,7 @@ function construye(){
   }
   EST.paradas = paradas;
   EST.legs = legs;
+  ofreceComoCamino();
   EST.n = paradas.length;
   EST.entrada = entrada;
   EST.llegada = llegada;
@@ -864,6 +865,26 @@ function largoDe(pol){
   var l = 0;
   for(var i = 1; i < pol.length; i++) l += Math.hypot(pol[i][0] - pol[i-1][0], pol[i][1] - pol[i-1][1]);
   return l;
+}
+/* El camino interior, en el formato que el tour del visor entiende: una
+   polilínea en el marco del plano (u, v) con la distancia acumulada. El tour
+   del visor ya sabe caminar, poner la altura del suelo y mirar por delante. */
+function ofreceComoCamino(){
+  var a = api();
+  if(!a || !a.agregaTour || EST.caminoOfrecido) return;
+  EST.caminoOfrecido = true;
+  var pts = [], s = 0, anterior = null;
+  for(var i = 0; i < EST.legs.length; i++){
+    var pol = EST.legs[i].pol || [];
+    for(var j = 0; j < pol.length; j++){
+      var p = pol[j];
+      if(anterior) s += Math.hypot(p[0]-anterior[0], p[1]-anterior[1]);
+      pts.push({x:p[0], z:p[1], s:s});
+      anterior = p;
+    }
+  }
+  if(pts.length < 2) return;
+  a.agregaTour({id:'recorrido-casa', nombre:'Recorrido por la casa', pts:pts, largo:s});
 }
 /* Un punto de la polilínea, a distancia s. */
 function puntoEn(pol, s){

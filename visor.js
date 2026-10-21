@@ -5326,6 +5326,10 @@ AD.api = {escena:escena, camara:camara, renderer:renderer, capas:capas, pie:pie,
           entraPie:entrarPie, salirPie:salirPie, salirTour:salirTour, aplicaVista:aplicaVista, eligeVista:eligeVista,
           mueve:mueve, visible:visible, estanciaActiva:estanciaActiva, reloj:reloj,
           poneCapa:poneCapa, MUEBLE:MUEBLE, MAT:MAT, C0:C0,
+          /* Un modulo puede anadir un camino al tour (por ejemplo, el recorrido
+             por dentro de la casa). La lista se repinta sola. */
+          agregaTour: function(t){ if(!t || !t.pts || !t.pts.length) return false;
+                                  TOURS.push(t); pintaTour(); return true; },
           orbita:orbita, restauraOrbita:restauraOrbita, bloqueaOrbita:bloqueaOrbita};
 /* C, INT y VERSION cambian al cambiar de version de casa: son getters, no copias.
    Un modulo que leyera una foto de C se quedaria con la planta equivocada. */

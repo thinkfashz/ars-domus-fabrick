@@ -76,7 +76,9 @@ AD.iconos = {
   paleta: '<path d="M9 2.5a6.5 6.5 0 0 0 0 13c1.2 0 1.6-.8 1.6-1.5 0-.8-.7-1.2-.7-1.9 0-.6.5-1.1 1.2-1.1h1.3A3.1 3.1 0 0 0 15.5 7.7C15.5 4.8 12.7 2.5 9 2.5z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="6.2" cy="8" r="1" fill="currentColor"/><circle cx="9" cy="5.8" r="1" fill="currentColor"/><circle cx="12.2" cy="7" r="1" fill="currentColor"/>',
   cocina: '<path d="M3 3.5h12v5H3z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h12M7 8.5v3.5M11 8.5v3.5" fill="none" stroke="currentColor" stroke-width="1.4"/>',
   cine: '<path d="M2.5 4.5h13v9h-13z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 13.5v2M13 13.5v2" fill="none" stroke="currentColor" stroke-width="1.4"/>',
-  cctv: '<path d="M2.5 7h9l3 2.5v4.5h-12z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M7 14v2.5h5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>'
+  cctv: '<path d="M2.5 7h9l3 2.5v4.5h-12z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M7 14v2.5h5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>',
+  cam: '<circle cx="10" cy="4.4" r="1.7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8.4 5.8 6 8.5M11.6 5.8 14 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M6 8.5 3 14M14 8.5 17 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
+  lampara: '<path d="M6 8a4 4 0 0 1 8 0c0 2-1.4 2.6-1.8 4H7.8C7.4 10.6 6 10 6 8z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 14.5h4M10 2v1.5M4.5 4.6 5.6 5.6M15.5 4.6 14.4 5.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>'
 };
 
 AD.svg = function(nombre, clase){
@@ -210,6 +212,24 @@ function registra(){
       var m = AD.cctv; return !!(m && m.abierto && m.abierto());
     });
   }
+  /* El recorrido digital por la vivienda. */
+  if(AD.recorrido){
+    botonDe('recorrido', 'Recorrido', 'cam', AD.recorrido, function(){
+      var m = AD.recorrido; return !!(m && m.abierto && m.abierto());
+    });
+  }
+  /* La finca de noche. */
+  if(AD.exterior){
+    botonDe('exterior', 'Exterior', 'lampara', AD.exterior, function(){
+      var m = AD.exterior; return !!(m && m.abierto && m.abierto());
+    });
+  }
+  /* La luz: globos y volumetrico. */
+  if(AD.luz){
+    botonDe('luz', 'Luz', 'lampara', AD.luz, function(){
+      var m = AD.luz; return !!(m && m.encendida && m.encendida());
+    });
+  }
 }
 
 /* La barra se pinta cuando el visor esta listo. Si AD.alListo no existe (el
@@ -231,5 +251,12 @@ function arranca(){
   }
 }
 
+/* La barra se pinta **en el acto**, con los modulos que ya esten cargados, y
+   otra vez cuando el visor avisa que esta listo (los modulos que necesitan la
+   escena se montan despues). Antes solo se pintaba al final: si el core se
+   caia (por ejemplo, sin contexto WebGL), la barra se quedaba vacia y parecia
+   que no habia ningun boton. */
+registra();
+AD.pintaBarra();
 if(typeof AD.alListo === 'function') AD.alListo(arranca);
 else arranca();
