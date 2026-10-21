@@ -43,6 +43,7 @@ const MODULOS = ['paleta', 'cocina', 'plano', 'camaras', 'hub', 'audio', 'carga'
 const faltan = MODULOS.filter(m => !existsSync(join(RAIZ, 'modulo', m + '.js')));
 if (faltan.length) console.warn('Faltan modulos: ' + faltan.join(', ') + ' (el visor arranca igual)');
 if (existsSync(join(RAIZ, 'iconos'))) cpSync(join(RAIZ, 'iconos'), join(DIST, 'iconos'), { recursive: true });
+if (existsSync(join(RAIZ, 'icono.svg'))) cpSync(join(RAIZ, 'icono.svg'), join(DIST, 'icono.svg'));
 cpSync(join(CASA, 'casa.js'), join(DIST, 'casa.js'));
 if (existsSync(join(CASA, 'texturas'))) cpSync(join(CASA, 'texturas'), join(DIST, 'texturas'), { recursive: true });
 writeFileSync(join(DIST, '.nojekyll'), '');

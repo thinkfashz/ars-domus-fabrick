@@ -32,10 +32,12 @@ var F = window.CASA || window.FINCA, C = F.casa, X = F.exterior;
 ['zonas','caminos','sueltos','lindes','farolas','construcciones'].forEach(function(k){ X[k] = X[k] || []; });
 F.arboles = F.arboles || [];
 X.piscina.losas = X.piscina.losas || [];
-/* El nombre de la casa, en la pestaña y en la cabecera del panel */
-document.title = 'Maqueta de ' + F.meta.nombre;
-document.querySelector('#panel .cabecera h1').textContent = F.meta.nombre;
-document.querySelector('#panel .cabecera .sub').innerHTML = F.meta.subtitulo || 'Maqueta 3D';
+/* El producto es Build House; la casa que se esta mirando conserva su nombre
+   (va en el subtitulo) y el de la demo es solo un ejemplo. */
+document.title = 'Build House · ' + F.meta.nombre;
+document.querySelector('#panel .cabecera h1').textContent = 'Build House';
+document.querySelector('#panel .cabecera .sub').innerHTML =
+  '<b class="casa">' + F.meta.nombre + '</b>' + (F.meta.subtitulo ? ' · ' + F.meta.subtitulo : '');
 /* Un enlace opcional bajo el subtítulo: meta.enlace = {texto, url} */
 if(F.meta.enlace){
   var enl = document.createElement('a');

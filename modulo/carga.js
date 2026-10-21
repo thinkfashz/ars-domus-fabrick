@@ -105,12 +105,26 @@ function css(){
    'background:radial-gradient(120% 90% at 50% 12%,#16211c 0%,#0a0f0c 58%,#050706 100%);'+
    'color:#e9ede2;font-family:"IBM Plex Sans Condensed",sans-serif;transition:opacity .55s ease}'+
    '#fab-carga.fuera{opacity:0;pointer-events:none}'+
-   '#fab-carga .caja{width:min(420px,86vw);text-align:center;padding:0 18px}'+
-   '#fab-carga .marca{font-size:13px;letter-spacing:.42em;text-transform:uppercase;color:#c9ef63}'+
-   '#fab-carga .sub{font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:#7f8c7a;margin-top:6px}'+
+   '#fab-carga .caja{width:min(440px,88vw);text-align:center;padding:0 18px}'+
+   /* La marca: un plano de la casa (corte + hueco) con la linea de altura. */
+   '#fab-carga .logo{width:92px;height:92px;margin:0 auto 18px;display:block}'+
+   '#fab-carga .logo .casa{fill:none;stroke:#c9ef63;stroke-width:1.6;stroke-linejoin:round}'+
+   '#fab-carga .logo .corte{fill:none;stroke:#7f8c7a;stroke-width:1;stroke-dasharray:3 3}'+
+   '#fab-carga .logo .hito{fill:#c9ef63}'+
+   '#fab-carga .marca{font:700 26px/1 "IBM Plex Sans Condensed",sans-serif;letter-spacing:.3em;'+
+   'text-transform:uppercase;color:#f2f6ec;text-shadow:0 0 26px rgba(201,239,99,.28)}'+
+   '#fab-carga .marca b{color:#c9ef63;font-weight:700}'+
+   '#fab-carga .sub{font:500 10px/1 "IBM Plex Mono",monospace;letter-spacing:.34em;text-transform:uppercase;'+
+   'color:#7f8c7a;margin-top:9px}'+
+   '#fab-carga .linea{margin:16px auto 0;width:52px;height:1px;background:linear-gradient(90deg,transparent,#c9ef63,transparent)}'+
    '#fab-carga .pista{margin-top:26px;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#5f6c5c;min-height:2.4em}'+
-   '#fab-carga .riel{margin-top:20px;height:3px;background:rgba(233,237,226,.13);overflow:hidden}'+
-   '#fab-carga .riel i{display:block;height:100%;width:0%;background:#c9ef63;transition:width .35s ease}'+
+   '#fab-carga .riel{margin-top:22px;height:6px;background:rgba(233,237,226,.08);overflow:hidden;'+
+   'border:1px solid rgba(233,237,226,.12);position:relative}'+
+   '#fab-carga .riel i{display:block;height:100%;width:0%;'+
+   'background:repeating-linear-gradient(90deg,#c9ef63 0 10px,rgba(201,239,99,.55) 10px 20px);'+
+   'transition:width .35s ease;box-shadow:0 0 14px rgba(201,239,99,.45)}'+
+   '#fab-carga .riel:after{content:"";position:absolute;inset:0;pointer-events:none;'+
+   'background:repeating-linear-gradient(90deg,transparent 0 19px,rgba(7,11,10,.85) 19px 20px)}'+
    '#fab-carga .cif{margin-top:9px;font:500 10px/1 "IBM Plex Mono",monospace;letter-spacing:.18em;color:#7f8c7a}'+
    '#fab-carga .entrar{margin-top:26px;min-height:44px;padding:0 26px;background:transparent;'+
    'color:#0a0f0c;background:#c9ef63;border:0;border-radius:3px;cursor:pointer;'+
@@ -182,8 +196,17 @@ function crea(){
   d.id = 'fab-carga';
   d.innerHTML =
    '<div class="caja">'+
-     '<div class="marca">Ars Domus</div>'+
-     '<div class="sub">Fabrick · maqueta navegable</div>'+
+     '<svg class="logo" viewBox="0 0 92 92" aria-label="Build House">'+
+       '<path class="casa" d="M12 78V30L46 14l34 16v48z"/>'+
+       '<path class="casa" d="M46 14v64M12 46h68"/>'+
+       '<path class="corte" d="M6 52h80"/>'+
+       '<rect class="casa" x="39" y="39" width="14" height="13"/>'+
+       '<circle class="hito" cx="26" cy="52" r="2.6"/>'+
+       '<circle class="hito" cx="66" cy="52" r="2.6"/>'+
+     '</svg>'+
+     '<div class="marca">Build<b> House</b></div>'+
+     '<div class="sub">Recorrido 3D · maqueta navegable</div>'+
+     '<div class="linea"></div>'+
      '<div class="pista"></div>'+
      '<div class="riel"><i></i></div>'+
      '<div class="cif">0 %</div>'+

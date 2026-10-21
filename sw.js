@@ -1,7 +1,7 @@
 /* Service worker del visor. Sirve la maqueta desde la caché para que el paseo abra al instante
    y siga abriendo sin cobertura; cuando hay versión nueva, la descarga en segundo plano y
    refresca sola en la siguiente visita. Solo toca lo de este mismo origen. */
-var VERSION = 'build-house-v4-fabrick';
+var VERSION = 'build-house-v5-buildhouse';
 var CAPA = VERSION + '-estatico';
 
 var BASE = ['./', './index.html', './manifest.webmanifest', './iconos/icono-192.png',
