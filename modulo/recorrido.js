@@ -521,7 +521,8 @@ function planifica(rooms, entrada){
 var EST = {
   abierto:false, play:true, vel:1, fase:'parada', t:0, s:0, fin:false,
   i:0, n:0, paradas:[], legs:[], orbita:null, yaw:0, pitch:0,
-  leg:null, hud:null, montado:false, aspect:-1, fovV:0, entrada:null, llegada:null
+  leg:null, hud:null, montado:false, boton:false, aspect:-1, fovV:0,
+  entrada:null, llegada:null, mirando:false, quieto:0
 };
 
 /* ═══ 9. Los datos de cada parada (para el rótulo) ═════════════════════════ */
@@ -614,7 +615,7 @@ function css(){
    'body.recorriendo #pie-hud{display:none!important}'+
    '#rec{position:fixed;inset:0;z-index:68;pointer-events:none;'+
    'font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;color:#e7efe6}'+
-   '#rec .rot{position:absolute;left:10px;right:10px;top:calc(env(safe-area-inset-top,0px) + 10px);'+
+   '#rec .rot{position:absolute;left:10px;right:64px;top:calc(env(safe-area-inset-top,0px) + 10px);'+
    'background:rgba(8,12,10,.80);border-left:3px solid #c8f542;border-radius:3px;padding:9px 12px 10px}'+
    '#rec .rot b{display:block;font-size:18px;line-height:1.15;font-weight:700}'+
    '#rec .rot span{display:block;font-size:12.5px;line-height:1.35;color:#c2cdb8;margin-top:2px}'+
@@ -630,9 +631,9 @@ function css(){
    '#rec .ctrl button[aria-pressed="true"]{background:#c8f542;color:#12160f;border-color:#c8f542}'+
    '#rec .ctrl button svg{width:20px;height:20px;display:block}'+
    '#rec .ctrl button[disabled]{opacity:.4}'+
-   '#rec .pie{position:absolute;left:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);'+
-   'background:rgba(8,12,10,.80);border-radius:3px;padding:6px 9px;font-size:11.5px;color:#c2cdb8;max-width:46vw}'+
-   '@media (min-width:861px){#rec .rot{left:auto;right:16px;top:16px;width:330px}}';
+   '#rec .pie{position:absolute;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 66px);'+
+   'background:rgba(8,12,10,.80);border-radius:3px;padding:5px 9px;font-size:11.5px;color:#c2cdb8}'+
+   '@media (min-width:861px){#rec .rot{left:16px;right:auto;top:16px;width:330px}}';
   if(document.head && document.head.appendChild) document.head.appendChild(s);
 }
 function creaHud(){
@@ -679,9 +680,11 @@ function pintaHud(){
   if(EST.elDato) EST.elDato.textContent = num(p.datos.sup) + ' m² · ' + p.datos.pieza;
   if(EST.elFov){
     var h = fovReal(EST.aspect || 0.46);
-    EST.elFov.textContent = 'visión humana 72° en horizontal → ' + num(h) + '° real en vertical';
+    EST.elFov.textContent = 'Ojos a ' + num(OJOS) + ' m · 72° h → ' + num(h) + '° real en vertical';
   }
-  if(EST.elPie) EST.elPie.textContent = p.est.fuera ? 'Exterior cubierto' : 'Ojos a 1,62 m del suelo';
+  if(EST.elPie){
+    EST.elPie.textContent = 'Parada ' + (EST.i + 1) + ' de ' + EST.n + (p.est.fuera ? ' · exterior cubierto' : '');
+  }
   if(EST.elAvance) EST.elAvance.style.width = (EST.n > 1 ? (EST.i / (EST.n - 1) * 100) : 0).toFixed(1) + '%';
   if(EST.btnPlay){
     EST.btnPlay.innerHTML = EST.play ? ICONO.pausa : ICONO.seguir;
@@ -731,9 +734,14 @@ function cierra(){
   }
   EST.orbita = null;
   EST.leg = null;
+  EST.mirando = false;
+  EST.quieto = 0;
   if(AD.refrescaBarra) AD.refrescaBarra();
 }
-function play(){ EST.play = true; EST.fin = false; pintaHud(); }
+function play(){
+  if(EST.fin && EST.i >= EST.n - 1){ irA(0); EST.play = true; pintaHud(); return; }
+  EST.play = true; EST.fin = false; pintaHud();
+}
 function pausa(){ EST.play = false; pintaHud(); }
 function velocidadSiguiente(){
   var i = VELOCIDADES.indexOf(EST.vel);
@@ -911,20 +919,35 @@ function mueve(dt){
       objetivoPitch = -0.05;
     }
   }
+  /* Si el usuario arrastra, la cámara mira a donde quiere; al soltar, tras un
+     segundo, la vista vuelve sola al rumbo del recorrido (como el tour). */
+  if(pie.mira || pie.bloqueo){
+    EST.quieto = 0;
+    EST.mirando = true;
+  } else if(EST.mirando){
+    EST.quieto += dt;
+    if(EST.quieto > 1.0){
+      EST.mirando = false;
+      EST.yaw = pie.yaw;                     /* se sigue desde donde dejó el dedo */
+      EST.pitch = pie.pitch;
+    }
+  }
   /* El giro suave: la mirada alcanza el rumbo poco a poco, sin latigazo. */
-  var k = Math.min(1, dt * SUAVE);
-  EST.yaw += difAng(EST.yaw, objetivoYaw) * k;
-  EST.pitch += (objetivoPitch - EST.pitch) * k;
-  if(EST.pitch > 1.2) EST.pitch = 1.2;
-  if(EST.pitch < -1.2) EST.pitch = -1.2;
+  if(!EST.mirando){
+    var k = Math.min(1, dt * SUAVE);
+    EST.yaw += difAng(EST.yaw, objetivoYaw) * k;
+    EST.pitch += (objetivoPitch - EST.pitch) * k;
+    if(EST.pitch > 1.2) EST.pitch = 1.2;
+    if(EST.pitch < -1.2) EST.pitch = -1.2;
+    pie.yaw = EST.yaw;
+    pie.pitch = EST.pitch;
+  }
   /* La cámara: el paseo del visor pone la cámara en pie.y + 1,65; con 3 cm de
      ajuste queda a 1,62 m del suelo terminado. */
   var mundo = aMundo(pos[0], pos[1]);
   pie.x = mundo[0];
   pie.z = mundo[1];
   pie.y = sueloDe(ahora.est) + DESAJUSTE;
-  pie.yaw = EST.yaw;
-  pie.pitch = EST.pitch;
   pie.anda = null;                                 /* el paseo no se maneja a mano */
   pie.teclas = {};
   abreCercanas();
@@ -971,38 +994,44 @@ AD.recorrido = {
   velocidad: velocidad
 };
 
-/* ═══ 17. El botón de la barra y el arranque ════════════════════════════════ */
-function boton(){
+/* ═══ 17. El botón de la barra y el arranque ════════════════════════════════
+   El botón se registra cuando exista `AD.boton`: el módulo de la barra
+   (modulo/fabrick.js) se carga después que este, así que el registro se
+   reintenta hasta que la barra esté lista. */
+function registraBoton(){
+  if(EST.boton) return true;
+  if(!AD.boton) return false;
   if(AD.iconos) AD.iconos.caminata = AD.iconos.caminata ||
    '<circle cx="9.6" cy="3.4" r="1.5" fill="currentColor"/>'+
    '<path d="M9.6 6 7.5 8.6l2 1.5.9 4.4M9.6 6l2.7 1.2 1.5 2.7M7.5 8.6 5.2 11l-.9 3.4" fill="none" '+
    'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>';
-  if(AD.boton){
-    AD.boton({id:'recorrido', etiqueta:'Recorrido', icono:'caminata',
-      alPulsar:function(){
-        /* El recorrido y el CCTV son excluyentes: si el CCTV está abierto, se cierra. */
-        if(AD.cctv && AD.cctv.cerrar){ try{ AD.cctv.cerrar(); }catch(e){} }
-        EST.abierto ? cierra() : abre();
-      },
-      activo:function(){ return EST.abierto; }});
-    if(AD.pintaBarra) AD.pintaBarra();
-  }
+  AD.boton({id:'recorrido', etiqueta:'Recorrido', icono:'caminata',
+    alPulsar:function(){
+      /* El recorrido y el CCTV son excluyentes: si el CCTV está abierto, se cierra. */
+      if(AD.cctv && AD.cctv.cerrar){ try{ AD.cctv.cerrar(); }catch(e){} }
+      EST.abierto ? cierra() : abre();
+    },
+    activo:function(){ return EST.abierto; }});
+  if(AD.pintaBarra) AD.pintaBarra();
+  EST.boton = true;
+  return true;
 }
 function monta(){
   if(EST.montado) return true;
   var a = api();
   if(!a || !(a.C0 || a.C)) return false;
   if(!construye()) return false;
-  boton();
   if(AD.onFrame) AD.onFrame(mueve);
   EST.montado = true;
   return true;
 }
 var intentos = 0;
 function espera(){
-  if(monta()) return;
+  monta();
+  var listo = registraBoton();
+  if(EST.montado && listo) return;
   intentos++;
-  if(intentos > 200) return;
+  if(intentos > 300) return;
   setTimeout(espera, 150);
 }
 if(AD.alListo) AD.alListo(function(){ espera(); });

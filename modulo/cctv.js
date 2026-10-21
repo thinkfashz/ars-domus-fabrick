@@ -446,7 +446,7 @@ function tomaGeneral(est, pieza){
   var pos = mundo(s.u, s.v, suelo + OJO);
   var obj = mundo(mira[0], mira[1], ymira);
   var via = viaSegura(s.u, s.v, OJO, mira[0], mira[1], pieza);
-  return {id:'GEN-' + est.id, nombre:est.nombre, rotulo:est.nombre,
+  return {id:'GEN-' + est.id, nombre:est.nombre, rotulo:'Plano general · ' + est.nombre,
           plan:'general', sitio:'Interior', estancia:est.id, planta:est.codigo || est.id,
           pos:pos, mira:obj, hfov:50, pu:s.u, pv:s.v, mu:mira[0], mv:mira[1],
           via:via ? mundo(via[0], via[1], suelo + OJO) : null};
@@ -494,7 +494,7 @@ function tomaContrapicado(est, pieza){
       if(distPieza(pieza, u, v) < RETIRO_PIEZA) continue;
       if(!lineaLibre(u, v, pieza.uv[0], pieza.uv[1], 0.62, yAlto, pieza)) continue;
       return {id:'CTR-' + (pieza.id || est.id), nombre:'Contrapicado de ' + (pieza.tipo || ''),
-              rotulo:'Contrapicado · ' + est.nombre, plan:'contrapicado',
+              rotulo:'Contrapicado · ' + (pieza.tipo || est.nombre), plan:'contrapicado',
               sitio:'Interior', estancia:est.id, planta:est.codigo || est.id,
               pos:mundo(u, v, suelo + 0.62), mira:mundo(pieza.uv[0], pieza.uv[1], suelo + yAlto),
               hfov:45, pu:u, pv:v, mu:pieza.uv[0], mv:pieza.uv[1], via:null};
@@ -1085,8 +1085,7 @@ function pintaInfo(){
   E.hd.id.textContent = c.id;
   if(E.nivel === 'cine'){
     E.hd.txt.textContent = c.nombre + (c.sitio === 'Exterior' ? ' · exterior' : '');
-    E.hd.rot.innerHTML = '<b>' + (c.rotulo || c.nombre) + '</b> · ' + c.plan +
-                         ' · ' + Math.round(c.hfov) + '°';
+    E.hd.rot.innerHTML = '<b>' + (c.rotulo || c.nombre) + '</b> · ' + Math.round(c.hfov) + '°';
   } else {
     /* en vigilancia no hay rótulo de cine: solo el identificador y la hora */
     E.hd.txt.textContent = c.nombre + ' · ' + Math.round(c.hfov) + '°';

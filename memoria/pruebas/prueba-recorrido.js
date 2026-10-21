@@ -158,4 +158,20 @@ comprueba('cierra', R.abierto() === false);
 comprueba('sale del paseo', AD.api.pie.activo === false);
 comprueba('el recorrido no sigue corriendo', (() => { const x = pie.x; cuadro(1/60); return pie.x === x; })());
 
-fin();
+/* ── El botón de la barra: tiene que registrarlo aunque `AD.boton` llegue
+      tarde (modulo/fabrick.js se carga después que este módulo). ── */
+const botones = [];
+AD.boton = (b) => { botones.push(b); return b; };
+AD.pintaBarra = () => {};
+setTimeout(() => {
+  const b = botones.find(x => x.id === 'recorrido');
+  comprueba('el botón de la barra se registra', !!b, botones.map(x => x.id).join(','));
+  if(b){
+    comprueba('el botón trae etiqueta e icono', b.etiqueta === 'Recorrido' && b.icono === 'caminata', b.etiqueta + ' / ' + b.icono);
+    b.alPulsar();
+    comprueba('el botón abre el recorrido', AD.recorrido.abierto() === true);
+    b.alPulsar();
+    comprueba('el botón cierra el recorrido', AD.recorrido.abierto() === false);
+  }
+  fin();
+}, 500);

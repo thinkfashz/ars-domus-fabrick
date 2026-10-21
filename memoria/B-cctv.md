@@ -233,8 +233,12 @@ AD.cctv = {
 
 ## 10. Qué falta
 
-- **No se ha visto en un teléfono**: la validación es de datos (0 fallos en las
-  dos listas, en las reglas y en la API), no visual.
+- **La escena 3D no se ha visto en un teléfono**: la validación es de datos
+  (0 fallos en las dos listas, en las reglas y en la API), no visual.
+- **El HUD sí se ha visto**, en un viewport de 390 × 844 (con el headless shell,
+  sin WebGL): sale el letterbox, la fila de 6 botones de 44 px, el rótulo, la
+  cuadrícula 3×3, el reloj y el panel de miniaturas en dos columnas. Lo que no
+  se ha probado es el HUD **sobre la escena** (contraste sobre un fondo claro).
 - La marca de tiempo usa la hora de la casa (`#hora` del visor, que sigue el
   ciclo de día/noche). Si no está, cae a una cuenta de 24 h desde la apertura.
 - No hay exportación de vídeo (a propósito).
