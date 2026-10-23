@@ -41,7 +41,7 @@ var AD = window.AD || (window.AD = {});
 /* ── Estado ─────────────────────────────────────────────────────────────── */
 var E = {abierto:false, i:0, nivel:'cine', auto:false, tAuto:0, reloj:0, tMov:0,
          cams:[], raiz:null, guardado:null, hd:null, minim:false, version:null,
-         boton:false, listo:false};
+         boton:false, listo:false, mueve:true};
 
 /* ── Reglas de encuadre (las medidas exactas) ───────────────────────────── */
 var OJO = 1.62;                   /* altura de la cámara de cine sobre el suelo */
@@ -51,6 +51,18 @@ var RETIRO_PIEZA = 0.60;          /* a la pieza que se enseña               */
 var DIST_MIN = 2.0;               /* el visor no deja acercar a menos de 2 m */
 var AUTO_CADA = 8;                /* segundos entre cámaras en rotación      */
 var VEL_TRAV = 0.16;              /* m/s del travelling                      */
+/* La lente: el campo horizontal pasado a focal de 35 mm (sensor de 36 mm).
+   Es la cifra que entiende un director de fotografia: 18 mm abre el espacio,
+   50 mm es el ojo humano, 85 mm comprime y aisla. */
+function focal(hfov){ return Math.round(18 / Math.tan(rad(limita(hfov, 2, 178)) / 2)); }
+function lente(hfov){
+  var f = focal(hfov);
+  if(f <= 24) return {mm:f, nombre:'gran angular'};
+  if(f <= 40) return {mm:f, nombre:'angular'};
+  if(f <= 60) return {mm:f, nombre:'normal'};
+  if(f <= 100) return {mm:f, nombre:'tele corto'};
+  return {mm:f, nombre:'tele'};
+}
 var HFOV_MIN = 35, HFOV_MAX = 90; /* límites del FOV en horizontal          */
 var VFOV_CINE = [22, 94];         /* límites del FOV vertical en cine        */
 var VFOV_REAL = [50, 94];         /* límites del FOV vertical en realidad    */
@@ -950,6 +962,7 @@ function crea(){
      '<button type="button" data-a="sig" aria-label="Cámara siguiente">▶</button>'+
      '<button type="button" data-a="auto" aria-pressed="false">Auto</button>'+
      '<button type="button" data-a="nivel">Cine</button>'+
+     '<button type="button" data-a="mueve" aria-pressed="true">Mover</button>'+
      '<button type="button" data-a="mallas" aria-pressed="false">Cámaras</button>'+
      '<button type="button" data-a="salir" aria-label="Salir del CCTV">✕</button>'+
    '</div>'+
@@ -959,12 +972,14 @@ function crea(){
   E.hd = {id:d.querySelector('.cid-n'), txt:d.querySelector('.cid-t'), hora:d.querySelector('.hora'),
           rot:d.querySelector('.cr'), panel:d.querySelector('.cp'), mallas:d.querySelector('.cm'),
           auto:d.querySelector('[data-a="auto"]'), nivel:d.querySelector('[data-a="nivel"]'),
+          mueve:d.querySelector('[data-a="mueve"]'),
           mbtn:d.querySelector('[data-a="mallas"]')};
   d.querySelector('[data-a="ant"]').addEventListener('click', function(){ ir(E.i - 1); });
   d.querySelector('[data-a="sig"]').addEventListener('click', function(){ ir(E.i + 1); });
   d.querySelector('[data-a="salir"]').addEventListener('click', function(){ cierra(); });
   E.hd.auto.addEventListener('click', function(){ auto(!E.auto); });
   E.hd.nivel.addEventListener('click', function(){ setNivel(E.nivel === 'cine' ? 'realidad' : 'cine'); });
+  E.hd.mueve.addEventListener('click', function(){ mueve(!E.mueve); });
   E.hd.mbtn.addEventListener('click', function(){ panelMin(!E.minim); });
   return d;
 }
@@ -1083,12 +1098,14 @@ function pintaInfo(){
   var c = E.cams[E.i];
   if(!c || !E.hd) return;
   E.hd.id.textContent = c.id;
+  var l = lente(c.hfov);
   if(E.nivel === 'cine'){
     E.hd.txt.textContent = c.nombre + (c.sitio === 'Exterior' ? ' · exterior' : '');
-    E.hd.rot.innerHTML = '<b>' + (c.rotulo || c.nombre) + '</b> · ' + Math.round(c.hfov) + '°';
+    E.hd.rot.innerHTML = '<b>' + (c.rotulo || c.nombre) + '</b> · ' +
+      Math.round(c.hfov) + '° · ' + l.mm + ' mm ' + l.nombre;
   } else {
-    /* en vigilancia no hay rótulo de cine: solo el identificador y la hora */
-    E.hd.txt.textContent = c.nombre + ' · ' + Math.round(c.hfov) + '°';
+    /* en vigilancia no hay rótulo de cine: el identificador, la lente y la hora */
+    E.hd.txt.textContent = c.nombre + ' · ' + Math.round(c.hfov) + '° · ' + l.mm + ' mm';
     E.hd.rot.innerHTML = '';
   }
   var hijos = E.hd.mallas ? E.hd.mallas.children : [];
@@ -1102,6 +1119,7 @@ function pintaNivel(){
   E.hd.nivel.textContent = E.nivel === 'cine' ? 'Realidad' : 'Cine';
   E.hd.nivel.setAttribute('aria-label', E.nivel === 'cine' ? 'Cambiar a vigilancia' : 'Cambiar a cine');
   if(E.hd.auto) E.hd.auto.setAttribute('aria-pressed', E.auto ? 'true' : 'false');
+  if(E.hd.mueve) E.hd.mueve.setAttribute('aria-pressed', E.mueve ? 'true' : 'false');
 }
 
 /* ── 11. Cambiar de cámara ───────────────────────────────────────────────── */
@@ -1111,6 +1129,8 @@ function ir(i){
   E.i = ((i % n) + n) % n;
   var c = E.cams[E.i];
   E.tMov = 0;
+  if(c.fase == null) c.fase = E.i * 1.7;
+  E.tAuto = 0;
   coloca(c.pos, c.mira, c.hfov);
   pintaInfo();          /* las miniaturas ya están dibujadas: solo se marcan */
 }
@@ -1121,6 +1141,11 @@ function auto(v){
     if(E.hd && E.hd.auto) E.hd.auto.setAttribute('aria-pressed', v ? 'true' : 'false');
   }
   return E.auto;
+}
+function mueve(v){
+  if(typeof v === 'boolean') E.mueve = v;
+  if(E.hd && E.hd.mueve) E.hd.mueve.setAttribute('aria-pressed', E.mueve ? 'true' : 'false');
+  return E.mueve;
 }
 function setNivel(n){
   n = (n === 'realidad') ? 'realidad' : 'cine';
@@ -1224,6 +1249,8 @@ AD.cctv = {
   nivel: function(){ return E.nivel; },
   setNivel: function(n){ return setNivel(n); },
   auto: function(v){ return auto(v); },
+  mueve: function(v){ return mueve(v); },
+  lente: function(){ var c = E.cams[E.i]; return c ? lente(c.hfov) : null; },
   panel: function(v){ if(typeof v === 'boolean') panelMin(v); return E.minim; },
   estado: function(){
     return {abierto:E.abierto, nivel:E.nivel, i:E.i, auto:E.auto, camaras:E.cams.length};
@@ -1237,7 +1264,18 @@ if(AD.onFrame) AD.onFrame(function(dt){
   /* La rotación automática: una cámara cada 8 s. */
   if(E.auto && E.cams.length > 1){
     E.tAuto += dt;
-    if(E.tAuto >= AUTO_CADA){ E.tAuto = 0; ir(E.i + 1); }
+    if(E.tAuto >= AUTO_CADA){
+      E.tAuto = 0;
+      ir(E.i + 1);
+      /* El corte de un programa de realidad: se anuncia la camara nueva. */
+      if(AD.avisa && E.nivel === 'cine'){
+        var nc = E.cams[E.i];
+        AD.avisa('Reality · ' + ((nc && (nc.rotulo || nc.nombre)) || 'cambio de cámara'), 'info');
+      }
+    }
+    if(E.hd && E.hd.auto) E.hd.auto.textContent = 'Reality ' + Math.ceil(AUTO_CADA - E.tAuto) + 's';
+  }else if(E.hd && E.hd.auto){
+    E.hd.auto.textContent = 'Auto';
   }
   /* El travelling: la cámara se desliza despacio y el rótulo se queda. */
   var c = E.cams[E.i];
@@ -1251,6 +1289,27 @@ if(AD.onFrame) AD.onFrame(function(dt){
                c.pos[1] + (c.via[1] - c.pos[1])*s,
                c.pos[2] + (c.via[2] - c.pos[2])*s];
     coloca(pos, c.mira, c.hfov);
+  }else if(c && E.mueve){
+    /* La camara no esta quieta. Un domo barre su sector (paneo de verdad, con
+       su inercia) y una camara de cine respira: encuadre vivo, como en un
+       plano de realidad. El barrido es armonico, no lineal: arranca y frena
+       solo, que es lo que hace el motor de un domo. */
+    var esDomo = (E.nivel === 'realidad');
+    var fase = c.fase == null ? (c.fase = E.i * 1.7) : c.fase;
+    var barrido = esDomo ? 0.30 : 0.045;        /* radianes: +-17 grados / +-2,6 */
+    var ritmo = esDomo ? 0.19 : 0.13;
+    var dx = c.mira[0] - c.pos[0], dz = c.mira[2] - c.pos[2];
+    var base = Math.atan2(dx, dz);
+    var r = Math.max(0.5, Math.hypot(dx, dz));
+    var ang = base + Math.sin(E.reloj * ritmo + fase) * barrido;
+    var dy = c.mira[1] - c.pos[1];
+    var inclina = esDomo ? Math.sin(E.reloj * 0.11 + fase * 0.7) * 0.035 : 0;
+    var mira = [c.pos[0] + Math.sin(ang) * r,
+                c.pos[1] + dy + inclina * r,
+                c.pos[2] + Math.cos(ang) * r];
+    /* Un zoom muy lento: da vida sin marear. */
+    var fov = c.hfov + Math.sin(E.reloj * 0.08 + fase) * (esDomo ? 2.2 : 1.1);
+    coloca(c.pos, mira, fov);
   }
   /* La marca de tiempo. */
   if(E.hd && E.hd.hora) E.hd.hora.textContent = horaActual();

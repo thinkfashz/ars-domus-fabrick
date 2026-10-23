@@ -5065,7 +5065,12 @@ function ponPlay(v){
   btnTourPlay.setAttribute('aria-label', v ? 'Pausa el recorrido' : 'Seguir el recorrido');
 }
 function entraTour(i){
-  if(!TOURS.length) return;
+  if(!TOURS.length){
+    /* Un boton que no hace nada es un boton roto: si la casa no trae caminos,
+       se dice y se manda al recorrido por dentro, que no depende del dato. */
+    if(AD.avisa) AD.avisa('Esta casa no trae caminos en los datos. Para recorrer la vivienda usa «Recorrido».', 'mal');
+    return false;
+  }
   TOUR.i = Math.max(0, Math.min(TOURS.length-1, i|0));
   var t = TOURS[TOUR.i], q = enTour(t, 0);
   salirTour(true);                                  // por si ya venía de otro
@@ -5076,6 +5081,7 @@ function entraTour(i){
   document.body.classList.add('tourando');
   tourHud.hidden = false;
   pieEstado.textContent = 'Tour: arrastra para mirar, y vuelve solo a mirar al frente';
+  return true;
 }
 function salirTour(silencioso){
   if(!TOUR.activo) return;
@@ -5126,12 +5132,18 @@ document.getElementById('tour-ritmo').addEventListener('input', function(e){ TOU
 var btnTour = document.getElementById('tour-ir');
 function marcaTour(){
   btnTour.setAttribute('aria-pressed', String(TOUR.activo));
-  btnTour.textContent = TOUR.activo ? 'Parar el tour' : 'Tour guiado por los caminos';
+  btnTour.textContent = TOUR.activo ? 'Parar el tour' : 'Tour del terreno (por los caminos)';
 }
 (function(){
   btnTour.addEventListener('click', function(){
-    if(TOUR.activo) salirTour(); else entraTour(TOUR.i);
-    marcaTour();
+    try{
+      if(TOUR.activo) salirTour();
+      else if(!entraTour(TOUR.i)) return;
+      marcaTour();
+    }catch(err){
+      if(AD.anota) AD.anota('Tour: ' + (err && err.message), (err && err.fileName) || '', (err && err.lineNumber) || 0, 'tour');
+      if(AD.avisa) AD.avisa('Tour: ' + (err && err.message ? err.message : err), 'mal');
+    }
   });
   document.getElementById('a-pie').addEventListener('click', function(){ if(TOUR.activo){ salirTour(true); marcaTour(); } });
   if(QS.has('tour')) entraTour(parseInt(QS.get('tour'), 10) || 0);

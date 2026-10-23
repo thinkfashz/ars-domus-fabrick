@@ -127,7 +127,16 @@ AD.pintaBarra = function(){
       el.innerHTML = AD.svg(b.icono) + '<span>' + b.etiqueta + '</span>';
       el.addEventListener('click', function(e){
         if(e && e.stopPropagation) e.stopPropagation();
-        try{ b.alPulsar(); }catch(err){ console.warn('Fabrick', b.id, err); }
+        try{
+          b.alPulsar();
+        }catch(err){
+          /* Antes esto se quedaba en la consola del escritorio: en el telefono
+             el boton parecia muerto y no habia forma de saber por que. */
+          console.warn('Fabrick', b.id, err);
+          if(AD.avisa) AD.avisa(b.etiqueta + ': ' + (err && err.message ? err.message : err), 'mal');
+          AD.anota && AD.anota(b.etiqueta + ' — ' + (err && err.message ? err.message : err),
+                               (err && err.fileName) || '', (err && err.lineNumber) || 0, 'boton');
+        }
         AD.refrescaBarra();
       });
       b.el = el;

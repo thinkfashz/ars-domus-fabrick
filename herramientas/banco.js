@@ -153,7 +153,7 @@ AD.api = {
 };
 
 /* ── Cargar los módulos y capturar fallos ────────────────────────────────── */
-const modulos = ['paleta', 'cocina', 'plano', 'camaras', 'hub', 'audio', 'carga', 'luz', 'cctv', 'exterior', 'fabrick', 'recorrido'];
+const modulos = ['diagnostico', 'paleta', 'cocina', 'plano', 'camaras', 'hub', 'audio', 'carga', 'luz', 'cctv', 'exterior', 'fabrick', 'recorrido'];
 const fallos = [];
 for(const m of modulos){
   const f = path.join(MOD, m + '.js');

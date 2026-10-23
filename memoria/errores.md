@@ -190,3 +190,57 @@ un error que ya no existe en el código. O red primero, o versión en la URL.
 **Y una más**: para el usuario Affected, la solución fue además **un origen
 nuevo** (`build-house-fabrick.vercel.app`): otro host es otro registro de
 service workers, así que la caché venenosa no aplica.
+
+
+---
+
+## 006 — Un botón que falla en silencio es un botón roto (2026-10-22)
+
+**Síntoma**: «el modo cine no agarra», «el tour tampoco», pero la app se ve y la barra
+está. Sin mensaje. En el escritorio no había nada, porque el `catch` del botón solo
+hacía `console.warn`.
+
+**Causa raíz**: la interfaz no distinguía entre *no se pudo abrir* y *no pasó nada*.
+`abre()` del cine devolvía `false` en tres sitios y nadie lo contaba; el handler lo
+ignoraba. Lo mismo con `entraTour()` cuando la casa no trae caminos.
+
+**Fix**:
+
+1. `AD.avisa(texto)` pinta el motivo en pantalla (módulo `diagnostico.js`), y el
+   `catch` de la barra lo usa.
+2. `abre()` del cine devuelve un **motivo** (`noVa(t)`) y `alterna()` lo enseña.
+3. `entraTour()` avisa si no hay caminos y manda a «Recorrido».
+4. `modulo/diagnostico.js` captura `error` y `unhandledrejection` **desde el primer
+   byte** (se carga antes de three.js) y deja un chip arriba a la derecha con la
+   versión, el número de fallos y el parte completo (WebGL, API, módulos, error con
+   archivo:línea, botón de copiar).
+
+**Cómo evitarlo**: todo handler de usuario que pueda fallar tiene que poder decirlo.
+Un `console.warn` en el teléfono no existe.
+
+---
+
+## 007 — La isla de la cocina tapaba el paso del salón (2026-10-22)
+
+**Síntoma**: la cocina se veía apretada y el paso desde el salón quedaba incómodo.
+
+**Causa raíz**: en `CASA_MEJORA`, la isla `COC-M01` estaba girada `-90` con el
+voladizo hacia el oeste (`+z` local = `-u`). Eso ponía las banquetas en `u=8,35`,
+contra la pared, y dejaba solo 0,15 m de paso al hueco `H-19` del salón. Además las
+banquetas quedaban a 0,35 m del borde de la isla: no se podía ni salir.
+
+**Fix** (medidas de uso, sin piezas nuevas):
+
+| Pieza | Antes | Ahora | Por qué |
+|---|---|---|---|
+| Isla `COC-M01` | `[9.2,2.4]` giro `-90` | `[10.0,2.3]` giro `0` | deja 0,8 m al salón y 0,95 m a la encimera |
+| Banquetas | `u=8,35` v=1.6/2.2/2.8 | `v=3.5`, u=9.4/10.0/10.6 | 0,7 m al voladizo, 0,55 m a la pared sur |
+| Nevera `COC-02` | `[12.05,2.6]` | `[12.05,1.3]` | cierra el triángulo contra el final de la encimera |
+
+**Lo que NO se hizo**: añadir horno, microondas o campana. **No están en el dato** y
+el contrato es datos primero. Queda anotado como pendiente para cuando el dato los
+traiga.
+
+**Cómo evitarlo**: una isla con voladizo necesita 0,45–0,60 m para la banqueta y
+0,90 m de paso libre por el lado de trabajo. Se comprueba con las cotas de la
+estancia, no a ojo.

@@ -1071,18 +1071,31 @@ var AD = window.AD || (window.AD = {});
     try{ haceTomas(); }catch(e){ return false; }
     return true;
   }
+  /* Un motivo, para que el usuario sepa por que no se abre. Sin esto, pulsar
+     «Cine» y que no pase nada es indistinguible de un boton roto. */
+  function noVa(t){ E.motivo = t; return false; }
+  function alterna(){
+    if(E.modo){ cierra(); return; }
+    var ok;
+    try{ ok = abre(); }
+    catch(err){
+      if(AD.anota) AD.anota('Cine: ' + (err && err.message), (err && err.fileName) || '', (err && err.lineNumber) || 0, 'cine');
+      if(AD.avisa) AD.avisa('Cine: ' + (err && err.message ? err.message : err), 'mal');
+      return;
+    }
+    if(!ok && AD.avisa) AD.avisa('Cine: ' + (E.motivo || 'no se pudo abrir.'), 'mal');
+    if(ok && AD.refrescaBarra) AD.refrescaBarra();
+  }
+
   function abre(){
-    if(!api()) return false;
-    var d = datos(); if(!d) return false;
+    if(!api()) return noVa('el visor todavía no está listo. Espera un segundo y vuelve a probar.');
+    var d = datos(); if(!d) return noVa('no encuentro los datos de la casa.');
     /* La planta 3D y el cine son excluyentes: los dos escriben la cámara en
        cada cuadro y se pisarían. Si la planta está abierta, se cierra. */
     if(window.AD && AD.plano && AD.plano.cerrar && AD.plano.esPlan3D && AD.plano.esPlan3D()) AD.plano.cerrar();
     /* Y con el paseo a pie: el visor repone la cámara desde `pie` en cada
        cuadro, y las dos se pisarían. */
-    if(!libreDePaseo()){
-      if(HUD) HUD.info.textContent = 'No se ha podido salir del paseo a pie.';
-      return false;
-    }
+    if(!libreDePaseo()) return noVa('no se pudo salir del paseo a pie.');
     if(!E.listo || E.version !== d.version) construye();
     creaHUD();
     HUD.panel.classList.add('on');
@@ -1106,7 +1119,6 @@ var AD = window.AD || (window.AD = {});
     if(E.k4) calidad4K(false);
     marcaCine(false);
   }
-  function alterna(){ if(E.modo) cierra(); else abre(); }
 
   function guardaCapas(){
     var a = api(); if(!a || !a.capas || E.capAntes) return;
@@ -1147,11 +1159,19 @@ var AD = window.AD || (window.AD = {});
      cine puesto se pisarían. Se sale de ellos antes de entrar. */
   function libreDePaseo(){
     var a = api();
-    if(a && a.TOUR && a.TOUR.activo) a.TOUR.activo = false;   // el tour va con el paseo
-    if(a && a.pie && a.pie.activo){
+    if(!a) return false;
+    if(a.TOUR && a.TOUR.activo) a.TOUR.activo = false;        // el tour va con el paseo
+    if(a.pie && a.pie.activo){
       var s = a.salirPie || (window.__visor && window.__visor.salirPie);
-      if(s){ s(); return true; }
-      return false;                        // no se ha podido salir: no se entra
+      if(!s){ E.motivo = 'el paseo a pie está activo y no hay forma de salir de él.'; return false; }
+      try{ s(); }
+      catch(err){
+        E.motivo = 'al salir del paseo: ' + (err && err.message ? err.message : err);
+        return false;
+      }
+      /* Salir del paseo puede dejar la camara a media transicion: se comprueba
+         de verdad que quedo libre, no se da por hecho. */
+      if(a.pie.activo){ E.motivo = 'el paseo a pie no se cerró.'; return false; }
     }
     return true;
   }
